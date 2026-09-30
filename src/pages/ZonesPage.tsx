@@ -205,7 +205,7 @@ export const ZonesPage: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
           {zones.map((zone) => {
             const assignedMembers = zoneMembers.filter((zm) => zm.zone_id === zone.id);
             const assignedSales = assignedMembers
@@ -215,17 +215,17 @@ export const ZonesPage: React.FC = () => {
             return (
               <div
                 key={zone.id}
-                className={`bg-white rounded-2xl border p-5 shadow-xs transition flex flex-col justify-between ${
+                className={`bg-white rounded-xl sm:rounded-2xl border p-3 sm:p-4.5 shadow-2xs transition flex flex-col justify-between ${
                   zone.active ? 'border-gray-200' : 'border-gray-200 bg-gray-50/70 opacity-75'
                 }`}
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-                        <MapPin className="w-4 h-4" />
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                        <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </div>
-                      <h3 className="font-bold text-gray-900 text-base leading-tight">
+                      <h3 className="font-bold text-gray-900 text-xs sm:text-sm truncate leading-tight">
                         {zone.name}
                       </h3>
                     </div>
@@ -233,7 +233,7 @@ export const ZonesPage: React.FC = () => {
                     <button
                       onClick={() => handleToggleActive(zone)}
                       title="Klik untuk ubah status aktif/nonaktif"
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition cursor-pointer ${
+                      className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border transition shrink-0 cursor-pointer ${
                         zone.active
                           ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
                           : 'bg-gray-200 text-gray-600 border-gray-300 hover:bg-gray-300'
@@ -244,20 +244,20 @@ export const ZonesPage: React.FC = () => {
                   </div>
 
                   {/* Assigned Sales Chips */}
-                  <div className="mt-4 pt-3 border-t border-gray-100">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-gray-400" />
-                      Sales yang Ditugaskan ({assignedSales.length}):
+                  <div className="mt-2.5 pt-2 sm:mt-3.5 sm:pt-2.5 border-t border-gray-100">
+                    <span className="text-[10px] sm:text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                      <Users className="w-3 h-3 text-gray-400" />
+                      Sales ({assignedSales.length}):
                     </span>
 
                     {assignedSales.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">Belum ada sales diassign</p>
+                      <p className="text-[11px] text-gray-400 italic">Belum ada sales diassign</p>
                     ) : (
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1">
                         {assignedSales.map((s) => (
                           <span
                             key={s.id}
-                            className="inline-flex items-center text-[11px] font-semibold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-lg border border-emerald-200"
+                            className="inline-flex items-center text-[10px] sm:text-[11px] font-medium bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200"
                           >
                             {s.name}
                           </span>
@@ -268,17 +268,17 @@ export const ZonesPage: React.FC = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                <div className="mt-3 pt-2 sm:mt-4 sm:pt-2.5 border-t border-gray-100 flex items-center justify-end gap-1">
                   <button
                     onClick={() => handleOpenEdit(zone)}
-                    className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                    className="px-2.5 py-1 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
                   >
-                    <Edit2 className="w-3.5 h-3.5" /> Edit & Assign Sales
+                    <Edit2 className="w-3 h-3" /> Edit & Sales
                   </button>
 
                   <button
                     onClick={() => setDeleteConfirmZone(zone)}
-                    className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                    className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                     title="Hapus Zone"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

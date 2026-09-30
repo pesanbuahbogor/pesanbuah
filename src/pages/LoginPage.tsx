@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
 import { PermissionDeniedBanner } from '../components/PermissionDeniedBanner';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -38,11 +39,18 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-gray-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-gray-950 flex flex-col justify-center py-10 sm:px-6 lg:px-8 px-4">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        {/* Logo icon */}
-        <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-lime-400 items-center justify-center shadow-xl shadow-emerald-500/30 text-3xl mb-3">
-          🍎
+        {/* Modern App Icon */}
+        <div className="inline-flex items-center justify-center mb-3">
+          <img
+            src="/pwa-192x192.png"
+            alt="PesanBuah Logo"
+            className="w-20 h-20 rounded-3xl shadow-2xl shadow-emerald-500/30 object-cover border-2 border-emerald-400/40"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = 'none';
+            }}
+          />
         </div>
         <h2 className="text-3xl font-extrabold text-white tracking-tight">
           PesanBuah<span className="text-emerald-400">.id</span>
@@ -52,7 +60,10 @@ export const LoginPage: React.FC = () => {
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md space-y-4">
+      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md space-y-4">
+        {/* PWA Install Banner */}
+        <PWAInstallButton variant="banner" />
+
         <PermissionDeniedBanner />
 
         <div className="bg-white py-8 px-6 shadow-2xl rounded-3xl sm:px-10 border border-gray-100">

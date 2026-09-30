@@ -13,6 +13,7 @@ import {
   Database,
 } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface NavbarProps {
   currentTab: string;
@@ -55,11 +56,17 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
           <div className="flex items-center gap-6">
             <div
               onClick={() => setCurrentTab('dashboard')}
-              className="flex items-center gap-2 cursor-pointer select-none"
+              className="flex items-center gap-2.5 cursor-pointer select-none"
             >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 via-emerald-500 to-lime-500 flex items-center justify-center shadow-xs text-white font-bold text-base tracking-tighter">
-                🍎
-              </div>
+              <img
+                src="/pwa-192x192.png"
+                alt="PesanBuah.id Logo"
+                className="w-8 h-8 rounded-xl shadow-xs object-cover border border-emerald-500/20"
+                onError={(e) => {
+                  // Fallback if image not ready
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+              />
               <div>
                 <span className="font-extrabold text-base sm:text-lg tracking-tight text-gray-900 leading-tight">
                   PesanBuah<span className="text-emerald-600">.id</span>
@@ -95,6 +102,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
 
           {/* Right Action: Supabase status (Owner only) & User Profile */}
           <div className="hidden md:flex items-center gap-3">
+            {/* In-App PWA Install Button */}
+            <PWAInstallButton />
+
             {/* Supabase status badge - ONLY VISIBLE TO OWNER */}
             {isOwner && (
               <button
@@ -184,7 +194,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
           </div>
 
           {/* Mobile hamburger menu */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1.5">
+            <PWAInstallButton />
+
             {isOwner && (
               <button
                 onClick={onOpenSupabaseModal}

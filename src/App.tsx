@@ -11,6 +11,7 @@ import { UserManagementPage } from './pages/UserManagementPage';
 import { SupabaseModal } from './components/SupabaseModal';
 import { BottomNav } from './components/BottomNav';
 import { PermissionDeniedBanner } from './components/PermissionDeniedBanner';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { ProspectStatus } from './types';
 import { db } from './lib/db';
 import { Loader2 } from 'lucide-react';
@@ -111,6 +112,9 @@ const AppContent: React.FC = () => {
           setCurrentTab(tab);
         }}
       />
+
+      {/* Connectivity & Offline Notification Indicator */}
+      <OfflineIndicator />
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-3 px-4 sm:px-6 text-center text-xs text-gray-400 mb-14 md:mb-0">

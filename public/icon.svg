@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+
+    <!-- Apple Body Gradient -->
+    <radialGradient id="appleGrad" cx="35%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#FF5252" />
+      <stop offset="40%" stop-color="#EF4444" />
+      <stop offset="85%" stop-color="#B91C1C" />
+      <stop offset="100%" stop-color="#7F1D1D" />
+    </radialGradient>
+
+    <!-- Leaf Gradient -->
+    <linearGradient id="leafGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#65A30D" />
+      <stop offset="60%" stop-color="#84CC16" />
+      <stop offset="100%" stop-color="#BEF264" />
+    </linearGradient>
+
+    <!-- Stem Gradient -->
+    <linearGradient id="stemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#78350F" />
+      <stop offset="100%" stop-color="#451A03" />
+    </linearGradient>
+
+    <!-- Soft Drop Shadow -->
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#022c22" flood-opacity="0.38" />
+    </filter>
+
+    <!-- Highlight Reflection -->
+    <linearGradient id="glaze" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded App Background Container -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Inner Soft Glow Ring -->
+  <rect x="12" y="12" width="488" height="488" rx="100" fill="none" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="4" />
+
+  <!-- Main Fruit / Apple Group with Shadow -->
+  <g filter="url(#dropShadow)" transform="translate(0, 8)">
+    <!-- Stem / Tangkai Buah -->
+    <path d="M256,180 C256,128 285,108 308,98 C302,108 296,126 288,144 C280,162 268,175 256,180 Z" fill="url(#stemGrad)" />
+
+    <!-- Leaf / Daun Hijau Segar -->
+    <path d="M268,148 C318,122 368,132 390,165 C364,188 314,185 272,160 Z" fill="url(#leafGrad)" />
+    <!-- Leaf Vein / Tulang Daun -->
+    <path d="M275,156 Q330,154 380,165" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="3" fill="none" stroke-linecap="round" />
+
+    <!-- Apple Flesh Body / Badan Apel Merah Segar -->
+    <path d="M 256,212
+             C 230,172 165,172 135,210
+             C 95,260 98,348 142,400
+             C 178,442 225,444 256,426
+             C 287,444 334,442 370,400
+             C 414,348 417,260 377,210
+             C 347,172 282,172 256,212 Z"
+          fill="url(#appleGrad)" />
+
+    <!-- Apple Highlight / Kilau Cahaya Mengkilap -->
+    <path d="M 152,228
+             C 175,200 220,196 238,206
+             C 215,220 185,248 170,285
+             C 160,260 154,242 152,228 Z"
+          fill="url(#glaze)" />
+
+    <!-- Subtle Dot Accent (Juiciness) -->
+    <circle cx="340" cy="270" r="10" fill="#FFFFFF" fill-opacity="0.35" />
+    <circle cx="360" cy="296" r="5" fill="#FFFFFF" fill-opacity="0.25" />
+  </g>
+
+  <!-- Small Elegant Badge Text "ID" at bottom right -->
+  <g transform="translate(365, 415)">
+    <rect x="-6" y="-18" width="46" height="26" rx="8" fill="#047857" fill-opacity="0.9" stroke="#6EE7B7" stroke-width="2" />
+    <text x="17" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="16" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">ID</text>
+  </g>
+</svg>
