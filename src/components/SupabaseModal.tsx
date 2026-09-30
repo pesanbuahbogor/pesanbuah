@@ -349,7 +349,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
                 <div className="flex items-center justify-between">
                   <span className="font-bold flex items-center gap-1.5 text-emerald-900">
                     <Sparkles className="w-4 h-4 text-emerald-600" />
-                    Hubungkan Database Cloud Supabase
+                    Koneksi Otomatis untuk Semua User (Owner, Manager, Sales)
                   </span>
                   <button
                     type="button"
@@ -357,23 +357,27 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
                     className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline flex items-center gap-1 cursor-pointer"
                   >
                     <HelpCircle className="w-3.5 h-3.5" />
-                    {showGuide ? 'Tutup Panduan' : 'Di mana cari URL & Key?'}
+                    {showGuide ? 'Tutup Panduan' : 'Tips Agar Semua Device Otomatis Konek'}
                   </button>
                 </div>
 
+                <p className="text-[11px] text-emerald-900 leading-relaxed">
+                  Agar staf dan user lain di perangkat mana pun <strong>langsung terhubung tanpa perlu menyetel URL/Key manual</strong>, cukup pasang <code>VITE_SUPABASE_URL</code> dan <code>VITE_SUPABASE_ANON_KEY</code> di <b>Vercel &gt; Settings &gt; Environment Variables</b> atau simpan di form ini sekali.
+                </p>
+
                 {showGuide && (
                   <div className="pt-2 border-t border-emerald-200/70 text-[11px] text-gray-700 space-y-1.5 animate-in fade-in duration-200">
-                    <p className="font-semibold text-gray-900">Langkah mudah menyalin dari Supabase:</p>
+                    <p className="font-semibold text-gray-900">Cara agar otomatis di semua device (Paling Direkomendasikan):</p>
                     <ol className="list-decimal pl-4 space-y-1 text-gray-600">
-                      <li>Buka project Anda di <b>supabase.com/dashboard</b>.</li>
+                      <li>Buka project Vercel Anda &gt; <b>Settings</b> &gt; <b>Environment Variables</b>.</li>
                       <li>
-                        Klik menu <b>Project Settings</b> (ikon gerigi di bilah kiri bawah) &gt; pilih <b>API</b> (atau <b>Data API</b>).
+                        Tambahkan variable: <b>VITE_SUPABASE_URL</b> (isi URL project Supabase Anda).
                       </li>
                       <li>
-                        Salin <b>Project URL</b> (contoh: <code className="bg-white px-1 rounded font-mono text-emerald-800">https://abcdef.supabase.co</code>).
+                        Tambahkan variable: <b>VITE_SUPABASE_ANON_KEY</b> (isi anon public key Supabase).
                       </li>
                       <li>
-                        Salin <b>Project API Keys</b> baris <b>anon public</b> (dimulai dengan <code className="bg-white px-1 rounded font-mono text-emerald-800">eyJhbG...</code>).
+                        Klik <b>Redeploy</b> di Vercel. Setelah itu, siapapun yang membuka website di HP, laptop, atau tablet langsung otomatis terhubung ke Supabase tanpa perlu login/setting apa pun!
                       </li>
                     </ol>
                   </div>

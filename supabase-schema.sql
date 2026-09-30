@@ -89,7 +89,24 @@ CREATE TABLE public.prospect_photos (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. Enable Row Level Security (RLS)
+-- 10. Grant Hak Akses Penuh ke Role anon & authenticated (Wajib untuk mencegah 'permission denied')
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+
+-- Grant eksplisit setiap tabel
+GRANT ALL ON TABLE public.profiles TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.zones TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.zone_members TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.business_types TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.prospects TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.prospect_photos TO anon, authenticated, service_role;
+
+-- 11. Security Policies (Akses penuh untuk anon dan authenticated)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zone_members ENABLE ROW LEVEL SECURITY;
@@ -97,12 +114,22 @@ ALTER TABLE public.business_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prospects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prospect_photos ENABLE ROW LEVEL SECURITY;
 
--- 11. Security Policies (Akses penuh untuk anon dan authenticated)
+DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.profiles;
 CREATE POLICY "Allow all for anon and authenticated" ON public.profiles FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.zones;
 CREATE POLICY "Allow all for anon and authenticated" ON public.zones FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.zone_members;
 CREATE POLICY "Allow all for anon and authenticated" ON public.zone_members FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.business_types;
 CREATE POLICY "Allow all for anon and authenticated" ON public.business_types FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.prospects;
 CREATE POLICY "Allow all for anon and authenticated" ON public.prospects FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.prospect_photos;
 CREATE POLICY "Allow all for anon and authenticated" ON public.prospect_photos FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- 12. Enable REALTIME Replication on All Tables (Aman dijalankan berulang kali)

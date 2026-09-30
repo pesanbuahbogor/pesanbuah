@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { DEFAULT_SUPABASE_CONFIG } from './supabase-default-config';
 
 const STORAGE_URL_KEY = 'pesanbuah_supabase_url';
 const STORAGE_ANON_KEY = 'pesanbuah_supabase_anon_key';
@@ -88,11 +89,27 @@ export function getStoredSupabaseConfig() {
   const envUrl = import.meta.env.VITE_SUPABASE_URL;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+  const defaultUrl = DEFAULT_SUPABASE_CONFIG.url;
+  const defaultKey = DEFAULT_SUPABASE_CONFIG.anonKey;
+
   const localUrl = localStorage.getItem(STORAGE_URL_KEY);
   const localKey = localStorage.getItem(STORAGE_ANON_KEY);
 
-  const rawUrl = localUrl || (envUrl && !envUrl.includes('your-project') ? envUrl : '');
-  const rawKey = localKey || (envKey && !envKey.includes('your-anon-key') ? envKey : '');
+  // Priority:
+  // 1. Environment variables (VITE_SUPABASE_URL on Vercel/Hosting)
+  // 2. Default code-level config (DEFAULT_SUPABASE_CONFIG)
+  // 3. User manual override in localStorage
+  const rawUrl =
+    (envUrl && !envUrl.includes('your-project') ? envUrl : '') ||
+    (defaultUrl && !defaultUrl.includes('your-project') ? defaultUrl : '') ||
+    localUrl ||
+    '';
+
+  const rawKey =
+    (envKey && !envKey.includes('your-anon-key') ? envKey : '') ||
+    (defaultKey && !defaultKey.includes('your-anon-key') ? defaultKey : '') ||
+    localKey ||
+    '';
 
   const sanitizedUrl = sanitizeSupabaseUrl(rawUrl);
   const cleanKey = sanitizeAnonKey(rawKey);
