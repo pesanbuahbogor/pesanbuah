@@ -3,6 +3,7 @@ import { BusinessType } from '../types';
 import { db } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { subscribeToRealtime } from '../lib/supabase';
 import { Tag, Plus, Edit2, Trash2, X, ShieldAlert, Loader2, AlertTriangle } from 'lucide-react';
 
 export const BusinessTypesPage: React.FC = () => {
@@ -36,6 +37,10 @@ export const BusinessTypesPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const unsub = subscribeToRealtime('business_types', () => {
+      loadData();
+    });
+    return () => unsub();
   }, []);
 
   // Access control

@@ -9,6 +9,7 @@ import {
 import { db } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { getSupabase, subscribeToRealtime } from '../lib/supabase';
 import {
   Search,
   Filter,
@@ -27,6 +28,8 @@ import {
   Trash2,
   ChevronRight,
   ExternalLink,
+  Radio,
+  AlertCircle,
 } from 'lucide-react';
 import { ProspectFormModal } from '../components/ProspectFormModal';
 import { ProspectDetailModal } from '../components/ProspectDetailModal';
@@ -61,9 +64,11 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [selectedProspectDetail, setSelectedProspectDetail] = useState<Prospect | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadAllData = async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const [prospectsData, typesData, zonesData, profilesData] = await Promise.all([
         db.getProspects(currentUser),
@@ -76,7 +81,9 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
       setZones(zonesData);
       setProfiles(profilesData);
     } catch (err: any) {
-      toastError('Gagal memuat data calon customer.');
+      const errMsg = err?.message || 'Gagal memuat data dari database.';
+      setLoadError(errMsg);
+      toastError(errMsg);
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -86,6 +93,25 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   useEffect(() => {
     loadAllData();
   }, [currentUser]);
+
+  // Real-time synchronization: update list instantly whenever any field team changes prospects
+  useEffect(() => {
+    const unsubProspects = subscribeToRealtime('prospects', () => {
+      loadAllData();
+    });
+    const unsubZones = subscribeToRealtime('zones', () => {
+      loadAllData();
+    });
+    const unsubTypes = subscribeToRealtime('business_types', () => {
+      loadAllData();
+    });
+
+    return () => {
+      unsubProspects();
+      unsubZones();
+      unsubTypes();
+    };
+  }, []);
 
   // Maps for quick lookup
   const businessTypeMap = useMemo(() => new Map(businessTypes.map((t) => [t.id, t.name])), [businessTypes]);
@@ -182,13 +208,24 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">
               Database Calon Customer (Prospect)
             </h1>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
               {filteredProspects.length} Data
             </span>
+            {getSupabase() ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <Radio className="w-2.5 h-2.5 text-emerald-600" />
+                Realtime Cloud
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                Penyimpanan Lokal
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-gray-500 mt-0.5">
             Mencatat, mengelola, mencari, dan memantau calon customer PesanBuah.id secara akurat.
@@ -203,6 +240,26 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
           Tambah Calon Customer
         </button>
       </div>
+
+      {/* Database Error Banner if Supabase query fails */}
+      {loadError && (
+        <div className="p-3 sm:p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <p className="font-bold">Gagal Mengakses Database Supabase</p>
+            <p className="text-[11px] text-rose-800">{loadError}</p>
+            <p className="text-[10px] text-rose-600">
+              Tips: Jika tabel belum dibuat di Supabase, silakan buka menu <strong>Supabase Connected</strong> (Owner) &gt; tab <strong>Skrip SQL Schema &amp; RLS</strong>, salin kodenya, dan jalankan di Supabase SQL Editor.
+            </p>
+          </div>
+          <button
+            onClick={() => loadAllData()}
+            className="px-2.5 py-1 bg-white border border-rose-300 hover:bg-rose-100 text-rose-800 text-xs font-semibold rounded-lg shrink-0 transition"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
 
       {/* SEARCH & FILTERS BOX (Section 11) */}
       <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-gray-200 shadow-2xs space-y-2.5">

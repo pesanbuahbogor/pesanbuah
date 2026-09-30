@@ -5,16 +5,22 @@ const STORAGE_ANON_KEY = 'pesanbuah_supabase_anon_key';
 
 /**
  * Sanitizes and normalizes a Supabase project URL.
- * Automatically cleans trailing slashes, subpaths, and converts dashboard URLs.
+ * Automatically cleans trailing slashes, subpaths, converts dashboard URLs,
+ * and handles raw project reference IDs.
  */
 export function sanitizeSupabaseUrl(rawUrl: string | null | undefined): string {
   if (!rawUrl) return '';
   let cleaned = rawUrl.trim().replace(/^['"]+|['"]+$/g, '');
   if (!cleaned) return '';
 
-  // Handle common user mistake: copying the dashboard URL instead of API URL
+  // Case 1: user entered only the project ref ID (e.g. 20 alphanumeric characters, no spaces, no dots, no slashes)
+  if (/^[a-z0-9_-]{15,35}$/i.test(cleaned)) {
+    return `https://${cleaned}.supabase.co`;
+  }
+
+  // Case 2: user copied from dashboard URL:
   // e.g. https://supabase.com/dashboard/project/abcdefghijk
-  // or https://app.supabase.com/project/abcdefghijk
+  // or https://supabase.com/dashboard/project/abcdefghijk/settings/api
   if (cleaned.includes('supabase.com/dashboard/project/') || cleaned.includes('supabase.com/project/')) {
     const match = cleaned.match(/project\/([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
@@ -22,7 +28,7 @@ export function sanitizeSupabaseUrl(rawUrl: string | null | undefined): string {
     }
   }
 
-  // Ensure standard protocol
+  // Case 3: user typed "xxx.supabase.co" without protocol
   if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
     cleaned = 'https://' + cleaned;
   }
@@ -43,12 +49,36 @@ export function sanitizeSupabaseUrl(rawUrl: string | null | undefined): string {
   }
 }
 
+/**
+ * Sanitizes and normalizes a Supabase Anon Key.
+ * Removes surrounding whitespace, quotes, zero-width characters,
+ * and accidental prefixes such as "anon:", "Bearer ", "apikey:", etc.
+ */
+export function sanitizeAnonKey(rawKey: string | null | undefined): string {
+  if (!rawKey) return '';
+  let cleaned = rawKey
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '') // remove zero-width & non-breaking spaces
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '') // remove quotes
+    .trim();
+
+  // If user accidentally copied prefix like "Bearer ", "anon public: ", "anon: ", "apikey: "
+  cleaned = cleaned.replace(/^(bearer|anon\s*public|anon|apikey|public|key)\s*[:=]?\s*/i, '').trim();
+
+  // Strip quotes again just in case they were inside the prefix
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+
+  return cleaned;
+}
+
 export function isValidSupabaseConfig(url: string, key: string): boolean {
   if (!url || !key) return false;
   if (url.includes('your-project') || key.includes('your-anon-key')) return false;
   try {
     const parsed = new URL(url);
-    return Boolean(parsed.hostname && parsed.hostname.includes('.'));
+    const validHost = Boolean(parsed.hostname && parsed.hostname.includes('.'));
+    const cleanKey = sanitizeAnonKey(key);
+    return validHost && cleanKey.length >= 20;
   } catch {
     return false;
   }
@@ -65,14 +95,14 @@ export function getStoredSupabaseConfig() {
   const rawKey = localKey || (envKey && !envKey.includes('your-anon-key') ? envKey : '');
 
   const sanitizedUrl = sanitizeSupabaseUrl(rawUrl);
-  const cleanKey = (rawKey || '').trim().replace(/^['"]+|['"]+$/g, '');
+  const cleanKey = sanitizeAnonKey(rawKey);
 
   return { url: sanitizedUrl, key: cleanKey };
 }
 
 export function saveSupabaseConfig(url: string, key: string) {
   const sanitizedUrl = sanitizeSupabaseUrl(url);
-  const cleanKey = (key || '').trim().replace(/^['"]+|['"]+$/g, '');
+  const cleanKey = sanitizeAnonKey(key);
 
   if (sanitizedUrl && cleanKey) {
     localStorage.setItem(STORAGE_URL_KEY, sanitizedUrl);
@@ -111,4 +141,37 @@ export function getSupabase(): SupabaseClient | null {
 export function resetSupabaseClient() {
   supabaseInstance = null;
 }
+
+/**
+ * Subscribes to real-time Postgres changes on a specific Supabase table.
+ * Automatically handles channel creation and returns an unsubscribe cleanup function.
+ */
+export function subscribeToRealtime(
+  table: string,
+  callback: (payload: any) => void
+): () => void {
+  const supabase = getSupabase();
+  if (!supabase) return () => {};
+
+  const channelName = `realtime:${table}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const channel = supabase
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table,
+      },
+      (payload) => {
+        callback(payload);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 

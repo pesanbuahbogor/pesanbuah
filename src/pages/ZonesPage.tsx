@@ -3,6 +3,7 @@ import { Zone, Profile, ZoneMember } from '../types';
 import { db } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { subscribeToRealtime } from '../lib/supabase';
 import {
   MapPin,
   Plus,
@@ -56,6 +57,10 @@ export const ZonesPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const unsub = subscribeToRealtime('zones', () => {
+      loadData();
+    });
+    return () => unsub();
   }, []);
 
   // Access check: only Owner & Manager

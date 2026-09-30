@@ -18,256 +18,286 @@ const STORAGE_BUSINESS_TYPES = 'pesanbuah_db_business_types_v1';
 const STORAGE_PROSPECTS = 'pesanbuah_db_prospects_v1';
 const STORAGE_PHOTOS = 'pesanbuah_db_photos_v1';
 
-// Seed initial dataset if not present in local storage
+// Default initial master data (used for offline fallback and for initial Supabase seeding if tables are empty)
+export const DEFAULT_PROFILES: Profile[] = [
+  {
+    id: 'usr-owner-001',
+    name: 'Budi Santoso',
+    email: 'owner@pesanbuah.id',
+    phone: '081234567890',
+    role: 'Owner',
+    active: true,
+    created_at: '2026-01-10T08:00:00Z',
+    password: 'password123',
+  },
+  {
+    id: 'usr-manager-002',
+    name: 'Hendra Wijaya',
+    email: 'manager@pesanbuah.id',
+    phone: '081298765432',
+    role: 'Manager',
+    active: true,
+    created_at: '2026-01-12T09:00:00Z',
+    password: 'password123',
+  },
+  {
+    id: 'usr-sales-003',
+    name: 'Rian Saputra',
+    email: 'rian@pesanbuah.id',
+    phone: '081311223344',
+    role: 'Sales',
+    active: true,
+    created_at: '2026-01-15T10:00:00Z',
+    password: 'password123',
+  },
+  {
+    id: 'usr-sales-004',
+    name: 'Siti Aisyah',
+    email: 'siti@pesanbuah.id',
+    phone: '081399887766',
+    role: 'Sales',
+    active: true,
+    created_at: '2026-01-20T11:00:00Z',
+    password: 'password123',
+  },
+];
+
+export const DEFAULT_ZONES: Zone[] = [
+  { id: 'zone-001', name: 'Zone 1 - Bogor Tengah & Pajajaran', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'zone-002', name: 'Zone 2 - Bogor Timur & Baranangsiang', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'zone-003', name: 'Zone 3 - Sentul & Babakan Madang', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'zone-004', name: 'Zone 4 - Cibinong & Depok Selatan', active: true, created_at: '2026-01-10T08:00:00Z' },
+];
+
+export const DEFAULT_ZONE_MEMBERS: ZoneMember[] = [
+  { id: 'zm-001', zone_id: 'zone-001', user_id: 'usr-sales-003' },
+  { id: 'zm-002', zone_id: 'zone-002', user_id: 'usr-sales-003' },
+  { id: 'zm-003', zone_id: 'zone-003', user_id: 'usr-sales-004' },
+  { id: 'zm-004', zone_id: 'zone-004', user_id: 'usr-sales-004' },
+];
+
+export const DEFAULT_BUSINESS_TYPES: BusinessType[] = [
+  { id: 'bt-001', name: 'Cafe & Coffee Shop', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-002', name: 'Restoran', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-003', name: 'Hotel & Resort', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-004', name: 'Juice Bar & Healthy Drink', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-005', name: 'Bakery & Pastry', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-006', name: 'Catering', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-007', name: 'Toko Buah / Retail', active: true, created_at: '2026-01-10T08:00:00Z' },
+  { id: 'bt-008', name: 'Lainnya', active: true, created_at: '2026-01-10T08:00:00Z' },
+];
+
+// Helper to seed localStorage ONLY if Supabase is not connected
 function initializeLocalStorageSeed() {
   if (!localStorage.getItem(STORAGE_PROFILES)) {
-    const initialProfiles: Profile[] = [
-      {
-        id: 'usr-owner-001',
-        name: 'Budi Santoso',
-        email: 'owner@pesanbuah.id',
-        phone: '081234567890',
-        role: 'Owner',
-        active: true,
-        created_at: '2026-01-10T08:00:00Z',
-        password: 'password123',
-      },
-      {
-        id: 'usr-manager-002',
-        name: 'Hendra Wijaya',
-        email: 'manager@pesanbuah.id',
-        phone: '081298765432',
-        role: 'Manager',
-        active: true,
-        created_at: '2026-01-12T09:00:00Z',
-        password: 'password123',
-      },
-      {
-        id: 'usr-sales-003',
-        name: 'Rian Saputra',
-        email: 'rian@pesanbuah.id',
-        phone: '081311223344',
-        role: 'Sales',
-        active: true,
-        created_at: '2026-01-15T10:00:00Z',
-        password: 'password123',
-      },
-      {
-        id: 'usr-sales-004',
-        name: 'Siti Aisyah',
-        email: 'siti@pesanbuah.id',
-        phone: '081399887766',
-        role: 'Sales',
-        active: true,
-        created_at: '2026-01-20T11:00:00Z',
-        password: 'password123',
-      },
-      {
-        id: 'usr-sales-005',
-        name: 'Doni Pratama (Nonaktif)',
-        email: 'doni@pesanbuah.id',
-        phone: '081255443322',
-        role: 'Sales',
-        active: false,
-        created_at: '2026-02-01T12:00:00Z',
-        password: 'password123',
-      },
-    ];
-    localStorage.setItem(STORAGE_PROFILES, JSON.stringify(initialProfiles));
+    localStorage.setItem(STORAGE_PROFILES, JSON.stringify(DEFAULT_PROFILES));
   }
-
   if (!localStorage.getItem(STORAGE_ZONES)) {
-    const initialZones: Zone[] = [
-      { id: 'zone-001', name: 'Zone 1 - Bogor Tengah & Pajajaran', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'zone-002', name: 'Zone 2 - Bogor Timur & Baranangsiang', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'zone-003', name: 'Zone 3 - Sentul & Babakan Madang', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'zone-004', name: 'Zone 4 - Cibinong & Depok Selatan', active: true, created_at: '2026-01-10T08:00:00Z' },
-    ];
-    localStorage.setItem(STORAGE_ZONES, JSON.stringify(initialZones));
+    localStorage.setItem(STORAGE_ZONES, JSON.stringify(DEFAULT_ZONES));
   }
-
   if (!localStorage.getItem(STORAGE_ZONE_MEMBERS)) {
-    const initialZoneMembers: ZoneMember[] = [
-      { id: 'zm-001', zone_id: 'zone-001', user_id: 'usr-sales-003' },
-      { id: 'zm-002', zone_id: 'zone-002', user_id: 'usr-sales-003' },
-      { id: 'zm-003', zone_id: 'zone-003', user_id: 'usr-sales-004' },
-      { id: 'zm-004', zone_id: 'zone-004', user_id: 'usr-sales-004' },
-    ];
-    localStorage.setItem(STORAGE_ZONE_MEMBERS, JSON.stringify(initialZoneMembers));
+    localStorage.setItem(STORAGE_ZONE_MEMBERS, JSON.stringify(DEFAULT_ZONE_MEMBERS));
   }
-
   if (!localStorage.getItem(STORAGE_BUSINESS_TYPES)) {
-    const initialBusinessTypes: BusinessType[] = [
-      { id: 'bt-001', name: 'Cafe & Coffee Shop', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-002', name: 'Restoran', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-003', name: 'Hotel & Resort', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-004', name: 'Juice Bar & Healthy Drink', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-005', name: 'Bakery & Pastry', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-006', name: 'Catering', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-007', name: 'Toko Buah / Retail', active: true, created_at: '2026-01-10T08:00:00Z' },
-      { id: 'bt-008', name: 'Lainnya', active: true, created_at: '2026-01-10T08:00:00Z' },
-    ];
-    localStorage.setItem(STORAGE_BUSINESS_TYPES, JSON.stringify(initialBusinessTypes));
+    localStorage.setItem(STORAGE_BUSINESS_TYPES, JSON.stringify(DEFAULT_BUSINESS_TYPES));
   }
-
   if (!localStorage.getItem(STORAGE_PROSPECTS)) {
-    const initialProspects: Prospect[] = [
-      {
-        id: 'prsp-001',
-        business_name: 'Kopi Daun Pajajaran',
-        pic_name: 'Dimas Setiawan',
-        phone: '081288990011',
-        business_type_id: 'bt-001',
-        address: 'Jl. Pajajaran No. 45, Baranangsiang, Bogor Timur',
-        latitude: -6.6015,
-        longitude: 106.8080,
-        gps_captured_at: '2026-02-15T10:30:00Z',
-        zone_id: 'zone-001',
-        sales_id: 'usr-sales-003',
-        status: 'Follow Up',
-        notes: 'Tertarik pasokan buah semangka, melon, dan lemon 50kg/minggu untuk menu mocktail & jus.',
-        created_by: 'usr-sales-003',
-        created_at: '2026-02-15T10:35:00Z',
-        updated_at: '2026-02-16T14:20:00Z',
-      },
-      {
-        id: 'prsp-002',
-        business_name: 'Resto Sunda Gurih',
-        pic_name: 'Ibu Ratna Dewi',
-        phone: '081355667788',
-        business_type_id: 'bt-002',
-        address: 'Jl. Raya Sentul No. 12, Babakan Madang, Bogor',
-        latitude: -6.5542,
-        longitude: 106.8521,
-        gps_captured_at: '2026-02-18T13:15:00Z',
-        zone_id: 'zone-003',
-        sales_id: 'usr-sales-004',
-        status: 'Customer',
-        notes: 'Sudah deal kontrak rutin buah potong dessert: pepaya calina, nanas madu, melon.',
-        created_by: 'usr-sales-004',
-        created_at: '2026-02-18T13:20:00Z',
-        updated_at: '2026-02-22T09:10:00Z',
-      },
-      {
-        id: 'prsp-003',
-        business_name: 'Fresh Pure Juice Bar',
-        pic_name: 'Kevin Pratama',
-        phone: '081912345678',
-        business_type_id: 'bt-004',
-        address: 'Ruko Baranangsiang Indah Blok B-3, Bogor Timur',
-        latitude: -6.6110,
-        longitude: 106.8155,
-        gps_captured_at: '2026-02-20T11:00:00Z',
-        zone_id: 'zone-002',
-        sales_id: 'usr-sales-003',
-        status: 'Prospect',
-        notes: 'Membutuhkan buah grade A harian (alpukat mentega, jeruk peras, strawberry). Minta pricelist B2B.',
-        created_by: 'usr-sales-003',
-        created_at: '2026-02-20T11:05:00Z',
-        updated_at: '2026-02-20T11:05:00Z',
-      },
-      {
-        id: 'prsp-004',
-        business_name: 'Boutique Bakery & Cafe',
-        pic_name: 'Sisca Tan',
-        phone: '081744332211',
-        business_type_id: 'bt-005',
-        address: 'Jl. Padjadjaran No. 88, Bantarjati, Bogor Utara',
-        latitude: -6.5823,
-        longitude: 106.8042,
-        gps_captured_at: '2026-02-24T15:40:00Z',
-        zone_id: 'zone-001',
-        sales_id: 'usr-sales-004',
-        status: 'Tidak Jadi',
-        notes: 'Saat ini masih terikat kontrak eksklusif dengan supplier lama sampai akhir tahun.',
-        created_by: 'usr-sales-004',
-        created_at: '2026-02-24T15:45:00Z',
-        updated_at: '2026-02-25T10:00:00Z',
-      },
-    ];
-    localStorage.setItem(STORAGE_PROSPECTS, JSON.stringify(initialProspects));
+    localStorage.setItem(STORAGE_PROSPECTS, JSON.stringify([]));
   }
-
   if (!localStorage.getItem(STORAGE_PHOTOS)) {
-    const initialPhotos: ProspectPhoto[] = [
-      {
-        id: 'photo-001',
-        prospect_id: 'prsp-001',
-        file_url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80',
-        created_at: '2026-02-15T10:35:00Z',
-      },
-      {
-        id: 'photo-002',
-        prospect_id: 'prsp-002',
-        file_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
-        created_at: '2026-02-18T13:20:00Z',
-      },
-    ];
-    localStorage.setItem(STORAGE_PHOTOS, JSON.stringify(initialPhotos));
+    localStorage.setItem(STORAGE_PHOTOS, JSON.stringify([]));
   }
 }
 
-// Execute seed check
-initializeLocalStorageSeed();
-
-// Distance calculation between 2 coordinates (Haversine Formula in meters)
-export function calculateGpsDistanceMeters(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371e3; // Earth radius in meters
-  const phi1 = (lat1 * Math.PI) / 180;
-  const phi2 = (lat2 * Math.PI) / 180;
-  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
+// Generate universally safe unique ID (works for both UUID and TEXT PostgreSQL columns)
+function generateUniqueId(prefix = 'id'): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
-// Clean phone numbers for exact comparison (removing non-digits, leading +62 or 0)
-export function normalizePhoneNumber(phone: string): string {
-  if (!phone) return '';
-  let cleaned = phone.replace(/\D/g, '');
-  if (cleaned.startsWith('62')) {
-    cleaned = '0' + cleaned.substring(2);
+// Distance helper
+function calculateGpsDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
+function normalizePhoneNumber(phone: string): string {
+  let cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('0')) {
+    cleaned = '62' + cleaned.substring(1);
+  } else if (!cleaned.startsWith('62')) {
+    cleaned = '62' + cleaned;
   }
   return cleaned;
 }
 
 // ============================================================================
-// DATABASE REPOSITORY SERVICE
+// PERMISSION DENIED LISTENER & HELPERS
+// ============================================================================
+
+type PermissionListener = (tableName: string) => void;
+const permissionListeners: Set<PermissionListener> = new Set();
+let lastPermissionDeniedTable: string | null = null;
+
+export function isPermissionDenied(err: any): boolean {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  return (
+    err.code === '42501' ||
+    msg.includes('permission denied') ||
+    msg.includes('row-level security') ||
+    msg.includes('violates row-level security')
+  );
+}
+
+export function notifyPermissionDenied(tableName: string) {
+  lastPermissionDeniedTable = tableName;
+  permissionListeners.forEach((fn) => {
+    try {
+      fn(tableName);
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+export function subscribeToPermissionDenied(listener: PermissionListener): () => void {
+  permissionListeners.add(listener);
+  if (lastPermissionDeniedTable) {
+    listener(lastPermissionDeniedTable);
+  }
+  return () => {
+    permissionListeners.delete(listener);
+  };
+}
+
+export function getPermissionDeniedTable(): string | null {
+  return lastPermissionDeniedTable;
+}
+
+export function clearPermissionDenied() {
+  lastPermissionDeniedTable = null;
+}
+
+// ============================================================================
+// DIRECT DATABASE SERVICE (NO LOCAL CACHE WHEN SUPABASE IS CONNECTED)
 // ============================================================================
 
 export const db = {
+  /**
+   * Automatically initializes essential master tables (profiles, zones, business types, zone members)
+   * in Supabase Cloud if the database tables are newly created and empty.
+   * Does NOT seed mock prospects - prospects are purely real field data.
+   */
+  async ensureAutoSyncedWithSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      initializeLocalStorageSeed();
+      return;
+    }
+
+    try {
+      // 1. Check Profiles table in Supabase
+      const { data: remoteProfiles, error: pErr } = await supabase.from('profiles').select('id').limit(1);
+      if (pErr) {
+        if (isPermissionDenied(pErr)) {
+          notifyPermissionDenied('profiles');
+        }
+      } else if (!remoteProfiles || remoteProfiles.length === 0) {
+        await supabase.from('profiles').upsert(DEFAULT_PROFILES, { onConflict: 'id' });
+      }
+
+      // 2. Check Zones table in Supabase
+      const { data: remoteZones, error: zErr } = await supabase.from('zones').select('id').limit(1);
+      if (zErr) {
+        if (isPermissionDenied(zErr)) {
+          notifyPermissionDenied('zones');
+        }
+      } else if (!remoteZones || remoteZones.length === 0) {
+        await supabase.from('zones').upsert(DEFAULT_ZONES, { onConflict: 'id' });
+      }
+
+      // 3. Check Business Types in Supabase
+      const { data: remoteTypes, error: btErr } = await supabase.from('business_types').select('id').limit(1);
+      if (btErr) {
+        if (isPermissionDenied(btErr)) {
+          notifyPermissionDenied('business_types');
+        }
+      } else if (!remoteTypes || remoteTypes.length === 0) {
+        await supabase.from('business_types').upsert(DEFAULT_BUSINESS_TYPES, { onConflict: 'id' });
+      }
+
+      // 4. Check Zone Members in Supabase
+      const { data: remoteMembers, error: zmErr } = await supabase.from('zone_members').select('id').limit(1);
+      if (zmErr) {
+        if (isPermissionDenied(zmErr)) {
+          notifyPermissionDenied('zone_members');
+        }
+      } else if (!remoteMembers || remoteMembers.length === 0) {
+        await supabase.from('zone_members').upsert(DEFAULT_ZONE_MEMBERS, { onConflict: 'id' });
+      }
+    } catch (err) {
+      console.warn('Initial Supabase master data check error:', err);
+    }
+  },
+
   // --------------------------------------------------------------------------
   // PROFILES / USER MANAGEMENT (OWNER ONLY)
   // --------------------------------------------------------------------------
   async getProfiles(): Promise<Profile[]> {
-    try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-        if (error) {
-          console.warn('Supabase getProfiles failed, falling back to local storage:', error.message);
-        } else if (data && data.length > 0) {
-          return data as Profile[];
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('profiles');
+          console.warn('Supabase profiles permission denied. Using master fallback profiles:', error.message);
+          return DEFAULT_PROFILES;
         }
+        throw new Error(`Database Supabase Error [profiles]: ${error.message}`);
       }
-    } catch (err: any) {
-      console.warn('Supabase getProfiles caught exception, using local storage:', err?.message);
+      return (data || []) as Profile[];
     }
+
+    initializeLocalStorageSeed();
     const raw = localStorage.getItem(STORAGE_PROFILES);
     return raw ? JSON.parse(raw) : [];
   },
 
   async getProfileById(id: string): Promise<Profile | null> {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('profiles');
+          return DEFAULT_PROFILES.find((p) => p.id === id) || null;
+        }
+        throw new Error(`Database Supabase Error [profiles]: ${error.message}`);
+      }
+      return (data as Profile) || null;
+    }
+
     const profiles = await this.getProfiles();
     return profiles.find((p) => p.id === id) || null;
   },
@@ -276,13 +306,12 @@ export const db = {
     profileData: Omit<Profile, 'id' | 'created_at'>,
     actorRole: UserRole
   ): Promise<Profile> {
-    // ENFORCE RLS RULE: Only Owner can create users!
     if (actorRole !== 'Owner') {
       throw new Error('Akses Ditolak: Hanya role Owner yang memiliki izin menambah data user.');
     }
 
     const newProfile: Profile = {
-      id: 'usr-' + Math.random().toString(36).substring(2, 9),
+      id: generateUniqueId('usr'),
       name: profileData.name.trim(),
       email: profileData.email.trim().toLowerCase(),
       phone: profileData.phone.trim(),
@@ -295,19 +324,18 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('profiles').insert([newProfile]).select().single();
-      if (!error && data) {
-        return data as Profile;
+      if (error) {
+        throw new Error(`Gagal menyimpan Profil ke Supabase: ${error.message}`);
       }
-      console.warn('Supabase createProfile error, saved locally:', error?.message);
+      return data as Profile;
     }
 
     const profiles = await this.getProfiles();
-    // Check email uniqueness
     if (profiles.some((p) => p.email.toLowerCase() === newProfile.email.toLowerCase())) {
-      throw new Error(`Email ${newProfile.email} sudah digunakan oleh user lain.`);
+      throw new Error(`Email "${newProfile.email}" sudah digunakan oleh user lain.`);
     }
 
-    profiles.unshift(newProfile);
+    profiles.push(newProfile);
     localStorage.setItem(STORAGE_PROFILES, JSON.stringify(profiles));
     return newProfile;
   },
@@ -317,18 +345,23 @@ export const db = {
     updates: Partial<Omit<Profile, 'id' | 'created_at'>>,
     actorRole: UserRole
   ): Promise<Profile> {
-    // ENFORCE RLS RULE: Only Owner can edit users!
     if (actorRole !== 'Owner') {
       throw new Error('Akses Ditolak: Hanya role Owner yang memiliki izin mengubah data user.');
     }
 
     const supabase = getSupabase();
     if (supabase) {
-      const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select().single();
-      if (!error && data) {
-        return data as Profile;
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(`Gagal mengubah Profil di Supabase: ${error.message}`);
       }
-      console.warn('Supabase updateProfile error, updated locally:', error?.message);
+      return data as Profile;
     }
 
     const profiles = await this.getProfiles();
@@ -337,7 +370,6 @@ export const db = {
       throw new Error('User tidak ditemukan.');
     }
 
-    // Check email uniqueness if email updated
     if (updates.email) {
       const emailConflict = profiles.some(
         (p) => p.id !== id && p.email.toLowerCase() === updates.email!.toLowerCase()
@@ -369,7 +401,6 @@ export const db = {
   },
 
   async deleteProfile(id: string, actorRole: UserRole): Promise<boolean> {
-    // ENFORCE RLS RULE: Only Owner can delete users!
     if (actorRole !== 'Owner') {
       throw new Error('Akses Ditolak: Hanya role Owner yang memiliki izin menghapus user.');
     }
@@ -378,31 +409,40 @@ export const db = {
     if (supabase) {
       const { error } = await supabase.from('profiles').delete().eq('id', id);
       if (error) {
-        console.warn('Supabase deleteProfile error, deleting locally:', error.message);
+        throw new Error(`Gagal menghapus user di Supabase: ${error.message}`);
       }
+      return true;
     }
 
     let profiles = await this.getProfiles();
     profiles = profiles.filter((p) => p.id !== id);
     localStorage.setItem(STORAGE_PROFILES, JSON.stringify(profiles));
-
-    // Also remove from zone_members
-    let members: ZoneMember[] = JSON.parse(localStorage.getItem(STORAGE_ZONE_MEMBERS) || '[]');
-    members = members.filter((m) => m.user_id !== id);
-    localStorage.setItem(STORAGE_ZONE_MEMBERS, JSON.stringify(members));
-
     return true;
   },
 
   // --------------------------------------------------------------------------
-  // ZONES (OWNER & MANAGER ONLY)
+  // ZONES / WILAYAH OPERASIONAL (OWNER & MANAGER)
   // --------------------------------------------------------------------------
   async getZones(): Promise<Zone[]> {
     const supabase = getSupabase();
     if (supabase) {
-      const { data, error } = await supabase.from('zones').select('*').order('name', { ascending: true });
-      if (!error && data) return data as Zone[];
+      const { data, error } = await supabase
+        .from('zones')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('zones');
+          console.warn('Supabase zones permission denied. Returning default zones.');
+          return DEFAULT_ZONES;
+        }
+        throw new Error(`Database Supabase Error [zones]: ${error.message}`);
+      }
+      return (data || []) as Zone[];
     }
+
+    initializeLocalStorageSeed();
     const raw = localStorage.getItem(STORAGE_ZONES);
     return raw ? JSON.parse(raw) : [];
   },
@@ -415,7 +455,7 @@ export const db = {
     if (!cleanName) throw new Error('Nama Zone tidak boleh kosong.');
 
     const newZone: Zone = {
-      id: 'zone-' + Math.random().toString(36).substring(2, 9),
+      id: generateUniqueId('zone'),
       name: cleanName,
       active: true,
       created_at: new Date().toISOString(),
@@ -424,7 +464,10 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('zones').insert([newZone]).select().single();
-      if (!error && data) return data as Zone;
+      if (error) {
+        throw new Error(`Gagal menyimpan Zone ke Supabase: ${error.message}`);
+      }
+      return data as Zone;
     }
 
     const zones = await this.getZones();
@@ -437,7 +480,11 @@ export const db = {
     return newZone;
   },
 
-  async updateZone(id: string, updates: Partial<Omit<Zone, 'id' | 'created_at'>>, actorRole: UserRole): Promise<Zone> {
+  async updateZone(
+    id: string,
+    updates: Partial<Omit<Zone, 'id' | 'created_at'>>,
+    actorRole: UserRole
+  ): Promise<Zone> {
     if (actorRole !== 'Owner' && actorRole !== 'Manager') {
       throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mengubah Zone.');
     }
@@ -445,7 +492,10 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('zones').update(updates).eq('id', id).select().single();
-      if (!error && data) return data as Zone;
+      if (error) {
+        throw new Error(`Gagal mengubah Zone di Supabase: ${error.message}`);
+      }
+      return data as Zone;
     }
 
     const zones = await this.getZones();
@@ -475,14 +525,18 @@ export const db = {
 
     const supabase = getSupabase();
     if (supabase) {
-      await supabase.from('zones').delete().eq('id', id);
+      const { error } = await supabase.from('zones').delete().eq('id', id);
+      if (error) {
+        throw new Error(`Gagal menghapus Zone di Supabase: ${error.message}`);
+      }
+      await supabase.from('zone_members').delete().eq('zone_id', id);
+      return true;
     }
 
     let zones = await this.getZones();
     zones = zones.filter((z) => z.id !== id);
     localStorage.setItem(STORAGE_ZONES, JSON.stringify(zones));
 
-    // Remove members for this zone
     let members: ZoneMember[] = JSON.parse(localStorage.getItem(STORAGE_ZONE_MEMBERS) || '[]');
     members = members.filter((m) => m.zone_id !== id);
     localStorage.setItem(STORAGE_ZONE_MEMBERS, JSON.stringify(members));
@@ -497,8 +551,17 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('zone_members').select('*');
-      if (!error && data) return data as ZoneMember[];
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('zone_members');
+          return DEFAULT_ZONE_MEMBERS;
+        }
+        throw new Error(`Database Supabase Error [zone_members]: ${error.message}`);
+      }
+      return (data || []) as ZoneMember[];
     }
+
+    initializeLocalStorageSeed();
     const raw = localStorage.getItem(STORAGE_ZONE_MEMBERS);
     return raw ? JSON.parse(raw) : [];
   },
@@ -510,14 +573,23 @@ export const db = {
 
     const supabase = getSupabase();
     if (supabase) {
-      await supabase.from('zone_members').delete().eq('zone_id', zoneId);
+      const { error: delErr } = await supabase.from('zone_members').delete().eq('zone_id', zoneId);
+      if (delErr) {
+        throw new Error(`Gagal update penugasan sales di Supabase: ${delErr.message}`);
+      }
+
       if (salesUserIds.length > 0) {
         const rows = salesUserIds.map((userId) => ({
+          id: generateUniqueId('zm'),
           zone_id: zoneId,
           user_id: userId,
         }));
-        await supabase.from('zone_members').insert(rows);
+        const { error: insErr } = await supabase.from('zone_members').insert(rows);
+        if (insErr) {
+          throw new Error(`Gagal menyimpan penugasan sales ke Supabase: ${insErr.message}`);
+        }
       }
+      return;
     }
 
     let allMembers = await this.getZoneMembers();
@@ -525,7 +597,7 @@ export const db = {
 
     salesUserIds.forEach((uid) => {
       allMembers.push({
-        id: 'zm-' + Math.random().toString(36).substring(2, 9),
+        id: generateUniqueId('zm'),
         zone_id: zoneId,
         user_id: uid,
       });
@@ -535,14 +607,27 @@ export const db = {
   },
 
   // --------------------------------------------------------------------------
-  // BUSINESS TYPES (JENIS USAHA)
+  // BUSINESS TYPES / JENIS USAHA (OWNER & MANAGER)
   // --------------------------------------------------------------------------
   async getBusinessTypes(): Promise<BusinessType[]> {
     const supabase = getSupabase();
     if (supabase) {
-      const { data, error } = await supabase.from('business_types').select('*').order('name', { ascending: true });
-      if (!error && data) return data as BusinessType[];
+      const { data, error } = await supabase
+        .from('business_types')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('business_types');
+          return DEFAULT_BUSINESS_TYPES;
+        }
+        throw new Error(`Database Supabase Error [business_types]: ${error.message}`);
+      }
+      return (data || []) as BusinessType[];
     }
+
+    initializeLocalStorageSeed();
     const raw = localStorage.getItem(STORAGE_BUSINESS_TYPES);
     return raw ? JSON.parse(raw) : [];
   },
@@ -555,7 +640,7 @@ export const db = {
     if (!cleanName) throw new Error('Nama Jenis Usaha tidak boleh kosong.');
 
     const newType: BusinessType = {
-      id: 'bt-' + Math.random().toString(36).substring(2, 9),
+      id: generateUniqueId('bt'),
       name: cleanName,
       active: true,
       created_at: new Date().toISOString(),
@@ -564,7 +649,10 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('business_types').insert([newType]).select().single();
-      if (!error && data) return data as BusinessType;
+      if (error) {
+        throw new Error(`Gagal menyimpan Jenis Usaha ke Supabase: ${error.message}`);
+      }
+      return data as BusinessType;
     }
 
     const types = await this.getBusinessTypes();
@@ -589,7 +677,10 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('business_types').update(updates).eq('id', id).select().single();
-      if (!error && data) return data as BusinessType;
+      if (error) {
+        throw new Error(`Gagal mengubah Jenis Usaha di Supabase: ${error.message}`);
+      }
+      return data as BusinessType;
     }
 
     const types = await this.getBusinessTypes();
@@ -617,7 +708,6 @@ export const db = {
       throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus Jenis Usaha.');
     }
 
-    // Check if any prospect uses this business type
     const prospects = await this.getProspects();
     if (prospects.some((p) => p.business_type_id === id)) {
       throw new Error('Jenis Usaha tidak dapat dihapus karena masih digunakan oleh data Calon Customer (Prospect). Anda dapat menonaktifkannya.');
@@ -625,7 +715,11 @@ export const db = {
 
     const supabase = getSupabase();
     if (supabase) {
-      await supabase.from('business_types').delete().eq('id', id);
+      const { error } = await supabase.from('business_types').delete().eq('id', id);
+      if (error) {
+        throw new Error(`Gagal menghapus Jenis Usaha di Supabase: ${error.message}`);
+      }
+      return true;
     }
 
     let types = await this.getBusinessTypes();
@@ -635,53 +729,80 @@ export const db = {
   },
 
   // --------------------------------------------------------------------------
-  // PROSPECTS / CALON CUSTOMER (FITUR UTAMA)
+  // PROSPECTS / DATABASE CALON CUSTOMER (SEMUA LEVEL ROLE)
   // --------------------------------------------------------------------------
   async getProspects(currentUser?: Profile | null): Promise<Prospect[]> {
     const supabase = getSupabase();
-    let list: Prospect[] = [];
-
     if (supabase) {
-      const query = supabase.from('prospects').select('*').order('created_at', { ascending: false });
-      const { data, error } = await query;
-      if (!error && data) {
-        list = data as Prospect[];
-      } else {
-        const raw = localStorage.getItem(STORAGE_PROSPECTS);
-        list = raw ? JSON.parse(raw) : [];
+      const { data, error } = await supabase
+        .from('prospects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('prospects');
+          throw new Error('Database Supabase Error: Izin akses tabel ditolak (permission denied for table prospects). Silakan jalankan script SQL GRANT di Supabase SQL Editor.');
+        }
+        console.error('Supabase getProspects error:', error);
+        throw new Error(`Database Supabase Error: ${error.message} (Kode: ${error.code || 'UNKNOWN'})`);
       }
-    } else {
-      const raw = localStorage.getItem(STORAGE_PROSPECTS);
-      list = raw ? JSON.parse(raw) : [];
+
+      let list = (data || []) as Prospect[];
+      // Sales only sees their own assigned or created prospects
+      if (currentUser && currentUser.role === 'Sales') {
+        list = list.filter(
+          (p) => p.sales_id === currentUser.id || p.created_by === currentUser.id
+        );
+      }
+      return list;
     }
 
-    // If Sales role: filter to prospects assigned to them or created by them
+    // Only if Supabase is not configured (offline mode)
+    initializeLocalStorageSeed();
+    const raw = localStorage.getItem(STORAGE_PROSPECTS);
+    let list: Prospect[] = raw ? JSON.parse(raw) : [];
+
     if (currentUser && currentUser.role === 'Sales') {
-      return list.filter((p) => p.sales_id === currentUser.id || p.created_by === currentUser.id);
+      list = list.filter(
+        (p) => p.sales_id === currentUser.id || p.created_by === currentUser.id
+      );
     }
-
     return list;
   },
 
   async getProspectById(id: string): Promise<Prospect | null> {
-    const prospects = await this.getProspects();
-    return prospects.find((p) => p.id === id) || null;
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('prospects')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Database Supabase Error [prospect]: ${error.message}`);
+      }
+      return (data as Prospect) || null;
+    }
+
+    const list = await this.getProspects();
+    return list.find((p) => p.id === id) || null;
   },
 
-  // DUPLICATE CHECK: Warning if duplicate by Phone, Business Name, or GPS distance <= 100m
   async checkDuplicate(params: {
-    phone: string;
-    business_name: string;
+    phone?: string;
+    business_name?: string;
     latitude?: number | null;
     longitude?: number | null;
     excludeId?: string;
   }): Promise<DuplicateWarningInfo> {
     const allProspects = await this.getProspects();
-    const profiles = await this.getProfiles();
-    const profileMap = new Map(profiles.map((p) => [p.id, p.name]));
+    const allProfiles = await this.getProfiles();
+    const profileMap = new Map(allProfiles.map((p) => [p.id, p.name]));
 
-    const targetPhoneNorm = normalizePhoneNumber(params.phone);
-    const targetNameNorm = params.business_name.trim().toLowerCase();
+    const targetPhoneNorm = params.phone ? normalizePhoneNumber(params.phone) : '';
+    const targetNameNorm = params.business_name?.trim().toLowerCase() || '';
 
     let matchByPhone = false;
     let matchByName = false;
@@ -709,7 +830,7 @@ export const db = {
         }
       }
 
-      // 2. Business name match (exact or very close)
+      // 2. Business name match
       if (targetNameNorm && p.business_name.trim().toLowerCase() === targetNameNorm) {
         matchByName = true;
         isMatch = true;
@@ -770,14 +891,12 @@ export const db = {
     },
     currentUser: Profile
   ): Promise<Prospect> {
-    // Validate required fields
     if (!data.business_name?.trim()) throw new Error('Nama Usaha wajib diisi.');
     if (!data.pic_name?.trim()) throw new Error('Nama Pemilik / PIC wajib diisi.');
     if (!data.phone?.trim()) throw new Error('No. HP / WhatsApp wajib diisi.');
     if (!data.business_type_id?.trim()) throw new Error('Jenis Usaha wajib dipilih.');
     if (!data.address?.trim()) throw new Error('Alamat Usaha wajib diisi.');
 
-    // If Sales creates it and no sales_id specified, auto assign to self
     let assignedSalesId = data.sales_id || null;
     if (currentUser.role === 'Sales') {
       assignedSalesId = currentUser.id;
@@ -785,7 +904,7 @@ export const db = {
 
     const now = new Date().toISOString();
     const newProspect: Prospect = {
-      id: 'prsp-' + Math.random().toString(36).substring(2, 9),
+      id: generateUniqueId('prsp'),
       business_name: data.business_name.trim(),
       pic_name: data.pic_name.trim(),
       phone: data.phone.trim(),
@@ -805,11 +924,28 @@ export const db = {
 
     const supabase = getSupabase();
     if (supabase) {
-      const { data: inserted, error } = await supabase.from('prospects').insert([newProspect]).select().single();
-      if (!error && inserted) return inserted as Prospect;
+      const { data: inserted, error } = await supabase
+        .from('prospects')
+        .insert([newProspect])
+        .select()
+        .single();
+
+      if (error) {
+        if (isPermissionDenied(error)) {
+          notifyPermissionDenied('prospects');
+          throw new Error('Database Supabase Error: Izin akses tabel ditolak (permission denied). Silakan jalankan script SQL GRANT di Supabase SQL Editor.');
+        }
+        console.error('Supabase createProspect error:', error);
+        throw new Error(
+          `Gagal menyimpan ke database Supabase: ${error.message} (Kode: ${error.code || 'RLS'}). Pastikan skrip SQL di tab Supabase telah dijalankan.`
+        );
+      }
+      return inserted as Prospect;
     }
 
-    const prospects = await this.getProspects();
+    // Offline mode only
+    const raw = localStorage.getItem(STORAGE_PROSPECTS);
+    const prospects: Prospect[] = raw ? JSON.parse(raw) : [];
     prospects.unshift(newProspect);
     localStorage.setItem(STORAGE_PROSPECTS, JSON.stringify(prospects));
     return newProspect;
@@ -823,7 +959,6 @@ export const db = {
     const existing = await this.getProspectById(id);
     if (!existing) throw new Error('Data Prospect tidak ditemukan.');
 
-    // Sales can only update their own prospect
     if (currentUser.role === 'Sales' && existing.sales_id !== currentUser.id && existing.created_by !== currentUser.id) {
       throw new Error('Akses Ditolak: Anda hanya dapat mengubah data prospect yang menjadi tanggung jawab Anda.');
     }
@@ -836,8 +971,18 @@ export const db = {
 
     const supabase = getSupabase();
     if (supabase) {
-      const { data: updated, error } = await supabase.from('prospects').update(updates).eq('id', id).select().single();
-      if (!error && updated) return updated as Prospect;
+      const { data: updated, error } = await supabase
+        .from('prospects')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase updateProspect error:', error);
+        throw new Error(`Gagal mengubah data di Supabase: ${error.message}`);
+      }
+      return updated as Prospect;
     }
 
     const raw = localStorage.getItem(STORAGE_PROSPECTS);
@@ -866,14 +1011,19 @@ export const db = {
     const existing = await this.getProspectById(id);
     if (!existing) throw new Error('Data Prospect tidak ditemukan.');
 
-    // Owner and Manager can delete. Sales cannot delete unless authorized.
     if (currentUser.role === 'Sales') {
       throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus data Prospect.');
     }
 
     const supabase = getSupabase();
     if (supabase) {
-      await supabase.from('prospects').delete().eq('id', id);
+      const { error } = await supabase.from('prospects').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase deleteProspect error:', error);
+        throw new Error(`Gagal menghapus dari Supabase: ${error.message}`);
+      }
+      await supabase.from('prospect_photos').delete().eq('prospect_id', id);
+      return true;
     }
 
     const raw = localStorage.getItem(STORAGE_PROSPECTS);
@@ -881,7 +1031,6 @@ export const db = {
     prospects = prospects.filter((p) => p.id !== id);
     localStorage.setItem(STORAGE_PROSPECTS, JSON.stringify(prospects));
 
-    // Delete photos for this prospect
     const rawPhotos = localStorage.getItem(STORAGE_PHOTOS);
     let photos: ProspectPhoto[] = rawPhotos ? JSON.parse(rawPhotos) : [];
     photos = photos.filter((p) => p.prospect_id !== id);
@@ -891,7 +1040,7 @@ export const db = {
   },
 
   // --------------------------------------------------------------------------
-  // PROSPECT PHOTOS (SUPABASE STORAGE / LOCAL STORAGE)
+  // PROSPECT PHOTOS (DIRECT SUPABASE / BASE64 STORAGE)
   // --------------------------------------------------------------------------
   async getProspectPhotos(prospectId: string): Promise<ProspectPhoto[]> {
     const supabase = getSupabase();
@@ -900,10 +1049,15 @@ export const db = {
         .from('prospect_photos')
         .select('*')
         .eq('prospect_id', prospectId)
-        .order('created_at', { ascending: false });
-      if (!error && data) return data as ProspectPhoto[];
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw new Error(`Database Supabase Error [photos]: ${error.message}`);
+      }
+      return (data || []) as ProspectPhoto[];
     }
 
+    initializeLocalStorageSeed();
     const raw = localStorage.getItem(STORAGE_PHOTOS);
     const photos: ProspectPhoto[] = raw ? JSON.parse(raw) : [];
     return photos.filter((p) => p.prospect_id === prospectId);
@@ -928,15 +1082,12 @@ export const db = {
             .from('prospect-photos')
             .getPublicUrl(filePath);
           fileUrl = publicUrlData.publicUrl;
-        } else {
-          console.warn('Supabase storage upload failed, fallback to base64:', uploadError.message);
         }
       } catch (err) {
-        console.warn('Storage upload error, fallback to base64:', err);
+        console.warn('Storage bucket upload caught error, fallback to data url:', err);
       }
     }
 
-    // Fallback or local mode: read as Data URL
     if (!fileUrl) {
       fileUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -947,40 +1098,50 @@ export const db = {
     }
 
     const newPhoto: ProspectPhoto = {
-      id: 'photo-' + Math.random().toString(36).substring(2, 9),
+      id: generateUniqueId('photo'),
       prospect_id: prospectId,
       file_url: fileUrl,
       created_at: new Date().toISOString(),
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('prospect_photos').insert([newPhoto]).select().single();
-      if (!error && data) return data as ProspectPhoto;
+      const { data, error } = await supabase
+        .from('prospect_photos')
+        .insert([newPhoto])
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(`Gagal menyimpan foto ke database Supabase: ${error.message}`);
+      }
+      return data as ProspectPhoto;
     }
 
     const raw = localStorage.getItem(STORAGE_PHOTOS);
     const photos: ProspectPhoto[] = raw ? JSON.parse(raw) : [];
-    photos.unshift(newPhoto);
+    photos.push(newPhoto);
     localStorage.setItem(STORAGE_PHOTOS, JSON.stringify(photos));
-
     return newPhoto;
   },
 
   async deletePhoto(photoId: string): Promise<boolean> {
     const supabase = getSupabase();
     if (supabase) {
-      await supabase.from('prospect_photos').delete().eq('id', photoId);
+      const { error } = await supabase.from('prospect_photos').delete().eq('id', photoId);
+      if (error) {
+        throw new Error(`Gagal menghapus foto di Supabase: ${error.message}`);
+      }
+      return true;
     }
 
     const raw = localStorage.getItem(STORAGE_PHOTOS);
     let photos: ProspectPhoto[] = raw ? JSON.parse(raw) : [];
     photos = photos.filter((p) => p.id !== photoId);
     localStorage.setItem(STORAGE_PHOTOS, JSON.stringify(photos));
-
     return true;
   },
 
-  // Reset database back to default seed for testing
+  // Reset database back to default seed for testing in offline mode
   resetToInitialSeed() {
     localStorage.removeItem(STORAGE_PROFILES);
     localStorage.removeItem(STORAGE_ZONES);

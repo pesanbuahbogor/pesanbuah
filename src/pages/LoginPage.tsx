@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { PermissionDeniedBanner } from '../components/PermissionDeniedBanner';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -51,7 +52,9 @@ export const LoginPage: React.FC = () => {
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md space-y-4">
+        <PermissionDeniedBanner />
+
         <div className="bg-white py-8 px-6 shadow-2xl rounded-3xl sm:px-10 border border-gray-100">
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>

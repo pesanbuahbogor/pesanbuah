@@ -1,8 +1,33 @@
 import React, { useState } from 'react';
-import { Database, Check, Copy, X, Server, RefreshCw, Key, ExternalLink } from 'lucide-react';
-import { getStoredSupabaseConfig, saveSupabaseConfig, resetSupabaseClient, getSupabase } from '../lib/supabase';
+import {
+  Database,
+  Check,
+  Copy,
+  X,
+  Server,
+  RefreshCw,
+  Key,
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  Activity,
+  HelpCircle,
+  Sparkles,
+  Radio,
+  ShieldAlert,
+} from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+import {
+  getStoredSupabaseConfig,
+  saveSupabaseConfig,
+  resetSupabaseClient,
+  getSupabase,
+  sanitizeSupabaseUrl,
+  sanitizeAnonKey,
+} from '../lib/supabase';
 import { db } from '../lib/db';
 import { useToast } from './Toast';
+import { supabaseSetupSql, supabaseQuickPermissionFixSql } from '../lib/supabase-schema-sql';
 
 interface SupabaseModalProps {
   isOpen: boolean;
@@ -16,17 +41,173 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
   const [url, setUrl] = useState(currentConfig.url);
   const [anonKey, setAnonKey] = useState(currentConfig.key);
   const [isCopied, setIsCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'config' | 'sql'>('config');
-
-  if (!isOpen) return null;
+  const [isFixCopied, setIsFixCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<'config' | 'sql' | 'fix'>('config');
+  const [showGuide, setShowGuide] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  // Sync inputs with stored config whenever modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      const cfg = getStoredSupabaseConfig();
+      setUrl(cfg.url);
+      setAnonKey(cfg.key);
+      setTestResult(null);
+    }
+  }, [isOpen]);
 
   const isConnected = !!getSupabase();
+  const cleanedUrl = sanitizeSupabaseUrl(url);
+  const cleanedKey = sanitizeAnonKey(anonKey);
+
+  const handleTestConnection = async () => {
+    if (!url.trim()) {
+      toastError('Harap masukkan Supabase Project URL terlebih dahulu.');
+      return;
+    }
+    if (!cleanedUrl) {
+      setTestResult({
+        success: false,
+        message: 'Format URL belum valid. Contoh yang benar: https://[project-id].supabase.co',
+      });
+      return;
+    }
+    if (!cleanedKey) {
+      setTestResult({
+        success: false,
+        message: 'Anon Public Key masih kosong. Salin anon key dari Supabase.',
+      });
+      return;
+    }
+
+    if (cleanedKey.startsWith('sbp_')) {
+      setTestResult({
+        success: false,
+        message:
+          'Kunci yang Anda masukkan berawalan "sbp_", yaitu Personal Access Token akun (bukan Project API Key). Silakan buka Supabase > Project Settings > API, lalu salin "anon public" key yang berawalan "eyJ...".',
+      });
+      return;
+    }
+
+    setTestingConnection(true);
+    setTestResult(null);
+
+    try {
+      // 1. Inisialisasi client Supabase sementara dengan URL dan Anon Key yang telah disanitasi
+      const tempClient = createClient(cleanedUrl, cleanedKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
+
+      // 2. Coba kueri data ke tabel (prospects)
+      const { data, error, status } = await tempClient
+        .from('prospects')
+        .select('id')
+        .limit(1);
+
+      // Kondisi 1: Berhasil membaca tabel (HTTP 200)
+      if (!error || status === 200) {
+        setTestResult({
+          success: true,
+          message: 'Koneksi Berhasil! URL & Anon Key Supabase valid, dan tabel database siap digunakan.',
+        });
+        success('Koneksi berhasil! Database Supabase terhubung.');
+        return;
+      }
+
+      // Kondisi 2: Autentikasi anon key BERHASIL diterima oleh Supabase & PostgreSQL,
+      // tetapi tabel prospects belum dibuat (error PostgreSQL: relation does not exist / 42P01 / PGRST204)
+      const errorMsg = (error.message || '').toLowerCase();
+      const isMissingTable =
+        error.code === '42P01' ||
+        error.code === 'PGRST204' ||
+        error.code === 'PGRST200' ||
+        errorMsg.includes('relation') ||
+        errorMsg.includes('does not exist');
+
+      if (isMissingTable) {
+        setTestResult({
+          success: true,
+          message:
+            'Koneksi Berhasil! URL & Anon Key Supabase valid & aktif. (Catatan: Tabel database belum dibuat. Silakan buka tab "Skrip SQL Schema & RLS", salin kodenya dan jalankan di Supabase SQL Editor).',
+        });
+        success('Koneksi berhasil! Silakan jalankan Skrip SQL di Supabase SQL Editor.');
+        return;
+      }
+
+      // Kondisi 3: Permission Denied (error 42501)
+      if (errorMsg.includes('permission denied') || error.code === '42501') {
+        setTestResult({
+          success: true,
+          message:
+            'Koneksi Berhasil! URL & Anon Key Supabase valid & aktif. Namun PostgreSQL mengunci izin tabel ("permission denied"). Cukup buka tab "Solusi Izin (Fix 42501)", salin script SQL dan jalankan di Supabase SQL Editor untuk membukanya.',
+        });
+        success('Koneksi valid! Buka tab "Solusi Izin (Fix 42501)" untuk membuka akses tabel.');
+        return;
+      }
+
+      // Kondisi 4: Cek endpoint GoTrue Auth /auth/v1/settings untuk memvalidasi apikey
+      try {
+        const authRes = await fetch(`${cleanedUrl}/auth/v1/settings`, {
+          method: 'GET',
+          headers: {
+            apikey: cleanedKey,
+          },
+        });
+
+        if (authRes.ok) {
+          setTestResult({
+            success: true,
+            message:
+              'Koneksi Berhasil! Proyek Supabase dan Anon Key Anda valid & aktif. Anda dapat langsung menyimpan konfigurasi ini.',
+          });
+          success('Koneksi ke Supabase berhasil!');
+          return;
+        }
+      } catch (authErr) {
+        // Abaikan jika fetch tertahan CORS atau lainnya
+      }
+
+      // Kondisi 4: Jika status 401 atau 403 (Kunci ditolak)
+      if (status === 401 || status === 403 || errorMsg.includes('api key') || errorMsg.includes('jwt')) {
+        setTestResult({
+          success: false,
+          message: `Anon Key ditolak oleh Supabase (HTTP ${status || 401}): ${error.message || 'Invalid API Key'}. Pastikan Anda menyalin "anon public key" (dimulai dengan eyJ...) dari Project Settings > API.`,
+        });
+        return;
+      }
+
+      // Kondisi 5: Respon error lainnya
+      setTestResult({
+        success: false,
+        message: `Respon Supabase: ${error.message || 'Status ' + status}. Periksa kembali URL dan Anon Key.`,
+      });
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: `Gagal menghubungi URL "${cleanedUrl}": ${err.message || 'Koneksi gagal'}. Pastikan URL project sudah benar dan perangkat terhubung ke internet.`,
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   const handleSave = () => {
+    if (!url.trim()) {
+      toastError('Harap masukkan Supabase Project URL.');
+      return;
+    }
+    if (!cleanedKey) {
+      toastError('Harap masukkan Supabase Anon Public Key.');
+      return;
+    }
     try {
-      saveSupabaseConfig(url, anonKey);
+      saveSupabaseConfig(cleanedUrl || url, cleanedKey);
       resetSupabaseClient();
-      success('Konfigurasi Supabase berhasil disimpan! Memuat ulang koneksi...');
+      success('Koneksi Supabase berhasil disimpan! Memuat ulang sistem...');
       setTimeout(() => {
         window.location.reload();
       }, 600);
@@ -40,6 +221,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
     resetSupabaseClient();
     setUrl('');
     setAnonKey('');
+    setTestResult(null);
     success('Beralih ke Engine Penyimpanan Lokal.');
     setTimeout(() => {
       window.location.reload();
@@ -57,127 +239,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
     }
   };
 
-  const sqlCode = `-- ==============================================================================
--- PESANBUAH.ID - SUPABASE SCHEMA & RLS SETUP
--- Copy dan Paste script ini di Supabase SQL Editor:
--- ==============================================================================
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Enum
-DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('Owner', 'Manager', 'Sales');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE prospect_status AS ENUM ('Prospect', 'Follow Up', 'Customer', 'Tidak Jadi');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
-
--- 1. profiles
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    phone TEXT NOT NULL,
-    role user_role NOT NULL DEFAULT 'Sales',
-    active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 2. zones
-CREATE TABLE IF NOT EXISTS public.zones (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL UNIQUE,
-    active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 3. zone_members
-CREATE TABLE IF NOT EXISTS public.zone_members (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    zone_id UUID NOT NULL REFERENCES public.zones(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    CONSTRAINT unique_zone_user UNIQUE (zone_id, user_id)
-);
-
--- 4. business_types
-CREATE TABLE IF NOT EXISTS public.business_types (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL UNIQUE,
-    active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 5. prospects
-CREATE TABLE IF NOT EXISTS public.prospects (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    business_name TEXT NOT NULL,
-    pic_name TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    business_type_id UUID NOT NULL REFERENCES public.business_types(id) ON DELETE RESTRICT,
-    address TEXT NOT NULL,
-    latitude DOUBLE PRECISION,
-    longitude DOUBLE PRECISION,
-    gps_captured_at TIMESTAMPTZ,
-    zone_id UUID REFERENCES public.zones(id) ON DELETE SET NULL,
-    sales_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    status prospect_status NOT NULL DEFAULT 'Prospect',
-    notes TEXT,
-    created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 6. prospect_photos
-CREATE TABLE IF NOT EXISTS public.prospect_photos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    prospect_id UUID NOT NULL REFERENCES public.prospects(id) ON DELETE CASCADE,
-    file_url TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Enable RLS
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.zone_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.business_types ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.prospects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.prospect_photos ENABLE ROW LEVEL SECURITY;
-
--- Helper role function
-CREATE OR REPLACE FUNCTION public.get_auth_user_role()
-RETURNS user_role AS $$
-    SELECT role FROM public.profiles WHERE id = auth.uid() AND active = true;
-$$ LANGUAGE sql SECURITY DEFINER;
-
--- Profiles: Only Owner can insert, update, or delete profiles!
-CREATE POLICY "Profiles view" ON public.profiles FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Only Owner insert" ON public.profiles FOR INSERT TO authenticated WITH CHECK (public.get_auth_user_role() = 'Owner');
-CREATE POLICY "Only Owner update" ON public.profiles FOR UPDATE TO authenticated USING (public.get_auth_user_role() = 'Owner');
-CREATE POLICY "Only Owner delete" ON public.profiles FOR DELETE TO authenticated USING (public.get_auth_user_role() = 'Owner');
-
--- Zones & Business Types: Owner & Manager can manage
-CREATE POLICY "Zones view" ON public.zones FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Zones manage" ON public.zones FOR ALL TO authenticated USING (public.get_auth_user_role() IN ('Owner', 'Manager'));
-
-CREATE POLICY "Types view" ON public.business_types FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Types manage" ON public.business_types FOR ALL TO authenticated USING (public.get_auth_user_role() IN ('Owner', 'Manager'));
-
--- Prospects: Owner/Manager view all, Sales view their assigned
-CREATE POLICY "Prospects view" ON public.prospects FOR SELECT TO authenticated
-USING (public.get_auth_user_role() IN ('Owner', 'Manager') OR sales_id = auth.uid() OR created_by = auth.uid());
-
-CREATE POLICY "Prospects insert" ON public.prospects FOR INSERT TO authenticated
-WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Prospects update" ON public.prospects FOR UPDATE TO authenticated
-USING (public.get_auth_user_role() IN ('Owner', 'Manager') OR sales_id = auth.uid());
-
-CREATE POLICY "Prospects delete" ON public.prospects FOR DELETE TO authenticated
-USING (public.get_auth_user_role() IN ('Owner', 'Manager'));
-`;
+  const sqlCode = supabaseSetupSql;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(sqlCode);
@@ -185,6 +247,15 @@ USING (public.get_auth_user_role() IN ('Owner', 'Manager'));
     success('Script SQL Supabase berhasil disalin ke clipboard!');
     setTimeout(() => setIsCopied(false), 2000);
   };
+
+  const copyFixToClipboard = () => {
+    navigator.clipboard.writeText(supabaseQuickPermissionFixSql);
+    setIsFixCopied(true);
+    success('Script Solusi Izin SQL berhasil disalin ke clipboard!');
+    setTimeout(() => setIsFixCopied(false), 2000);
+  };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
@@ -256,66 +327,217 @@ USING (public.get_auth_user_role() IN ('Owner', 'Manager'));
           >
             Skrip SQL Schema & RLS
           </button>
+          <button
+            onClick={() => setActiveTab('fix')}
+            className={`pb-3 px-3 text-sm font-semibold border-b-2 transition flex items-center gap-1.5 ${
+              activeTab === 'fix'
+                ? 'border-amber-500 text-amber-700 font-bold'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+            Solusi Izin (Fix 42501)
+          </button>
         </div>
 
         {/* Content */}
         <div className="p-6 overflow-y-auto flex-1">
           {activeTab === 'config' ? (
             <div className="space-y-4">
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
-                <p className="font-semibold text-sm mb-1 text-emerald-950">Informasi Integrasi Supabase</p>
-                Aplikasi PesanBuah.id siap terhubung dengan Supabase Cloud secara langsung. Anda dapat memasukkan Project URL dan Anon Key project Supabase Anda di bawah ini, atau gunakan environment variable <code className="bg-emerald-200/60 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_URL</code>.
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                  Supabase Project URL
-                </label>
-                <div className="relative">
-                  <input
-                    type="url"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://xyzcompany.supabase.co"
-                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden"
-                  />
+              {/* Guidance / Help box */}
+              <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/90 rounded-xl text-xs text-emerald-950 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-emerald-900">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    Hubungkan Database Cloud Supabase
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuide(!showGuide)}
+                    className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    {showGuide ? 'Tutup Panduan' : 'Di mana cari URL & Key?'}
+                  </button>
                 </div>
+
+                {showGuide && (
+                  <div className="pt-2 border-t border-emerald-200/70 text-[11px] text-gray-700 space-y-1.5 animate-in fade-in duration-200">
+                    <p className="font-semibold text-gray-900">Langkah mudah menyalin dari Supabase:</p>
+                    <ol className="list-decimal pl-4 space-y-1 text-gray-600">
+                      <li>Buka project Anda di <b>supabase.com/dashboard</b>.</li>
+                      <li>
+                        Klik menu <b>Project Settings</b> (ikon gerigi di bilah kiri bawah) &gt; pilih <b>API</b> (atau <b>Data API</b>).
+                      </li>
+                      <li>
+                        Salin <b>Project URL</b> (contoh: <code className="bg-white px-1 rounded font-mono text-emerald-800">https://abcdef.supabase.co</code>).
+                      </li>
+                      <li>
+                        Salin <b>Project API Keys</b> baris <b>anon public</b> (dimulai dengan <code className="bg-white px-1 rounded font-mono text-emerald-800">eyJhbG...</code>).
+                      </li>
+                    </ol>
+                  </div>
+                )}
               </div>
 
+              {/* URL Input with smart feedback */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                  Supabase Anon Public Key
-                </label>
-                <div className="relative">
-                  <textarea
-                    rows={3}
-                    value={anonKey}
-                    onChange={(e) => setAnonKey(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden resize-none"
-                  />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    Supabase Project URL
+                  </label>
+                  {cleanedUrl && (
+                    <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> URL Valid
+                    </span>
+                  )}
                 </div>
+
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    setTestResult(null);
+                  }}
+                  placeholder="https://xyzproject.supabase.co"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden font-mono"
+                />
+
+                {/* Auto conversion / Sanitization Feedback */}
+                {url.trim() && cleanedUrl && url.trim() !== cleanedUrl && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-start gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>
+                      Otomatis diselaraskan ke API Endpoint: <strong className="font-mono">{cleanedUrl}</strong>
+                    </span>
+                  </div>
+                )}
+
+                {url.trim() && !cleanedUrl && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-800 flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                    <span>
+                      Format URL belum tepat. Masukkan URL berformat <b>https://[project-id].supabase.co</b> (atau tempel link dashboard / ID project Anda).
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="flex gap-3 pt-2">
+              {/* Anon Key Input */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    Supabase Anon Public Key
+                  </label>
+                  {cleanedKey && (
+                    <div className="flex items-center gap-1.5">
+                      {cleanedKey.startsWith('eyJ') ? (
+                        <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Format JWT Valid
+                        </span>
+                      ) : cleanedKey.startsWith('sbp_') ? (
+                        <span className="text-[10px] text-rose-700 font-semibold flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                          <AlertCircle className="w-3 h-3 text-rose-600" /> Token Akun (Bukan Anon Key)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-blue-700 font-semibold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                          <Key className="w-3 h-3 text-blue-600" /> Kunci Terisi
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <textarea
+                  rows={2}
+                  value={anonKey}
+                  onChange={(e) => {
+                    setAnonKey(e.target.value);
+                    setTestResult(null);
+                  }}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-300 rounded-xl text-[11px] font-mono focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden resize-none"
+                />
+
+                {/* Feedback for cleanedKey */}
+                {anonKey.trim() && cleanedKey && anonKey.trim() !== cleanedKey && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-start gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>
+                      Otomatis dibersihkan dari spasi / tanda kutip / prefix tak sengaja tersalin.
+                    </span>
+                  </div>
+                )}
+
+                {cleanedKey.startsWith('sbp_') && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-800 flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Perhatian:</strong> Kunci ini diawali <code>sbp_</code>, yaitu Personal Access Token. Supabase mengharuskan penggunaan <strong>anon public key</strong> (berawalan <code>eyJ...</code>) yang ada di menu <em>Project Settings &gt; API</em>.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Test Connection Result Box */}
+              {testResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2 animate-in fade-in duration-150 ${
+                    testResult.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                  }`}
+                >
+                  {testResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <span className="leading-snug">{testResult.message}</span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
                 <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                  className="py-2.5 px-4 bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-800 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {testingConnection ? (
+                    <>
+                      <span className="inline-block animate-spin mr-1">⟳</span> Menguji...
+                    </>
+                  ) : (
+                    <>
+                      <Activity className="w-3.5 h-3.5 text-gray-600" /> Tes Koneksi
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleSave}
-                  className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Key className="w-4 h-4" />
-                  Hubungkan ke Supabase
+                  Simpan & Hubungkan ke Supabase
                 </button>
+
                 {isConnected && (
                   <button
+                    type="button"
                     onClick={handleDisconnect}
-                    className="py-2.5 px-4 border border-rose-300 text-rose-700 hover:bg-rose-50 font-semibold text-sm rounded-xl transition"
+                    className="py-2.5 px-3 border border-rose-300 text-rose-700 hover:bg-rose-50 font-semibold text-xs rounded-xl transition cursor-pointer"
                   >
                     Putuskan
                   </button>
                 )}
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'sql' ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-500">
@@ -333,6 +555,50 @@ USING (public.get_auth_user_role() IN ('Owner', 'Manager'));
               <pre className="p-4 bg-gray-900 text-emerald-400 font-mono text-xs rounded-xl overflow-x-auto max-h-96 leading-relaxed select-all">
                 {sqlCode}
               </pre>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-950">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  Mengatasi Error "permission denied for table profiles"
+                </div>
+                <p className="leading-relaxed">
+                  Pesan error <code>permission denied for table profiles</code> (PostgreSQL 42501) terjadi karena role <code>anon</code> belum memiliki hak <code>GRANT</code> pada skema <code>public</code> di Supabase.
+                </p>
+                <p className="leading-relaxed font-semibold text-amber-900">
+                  Script di bawah ini akan memberikan hak akses (GRANT) dan membuka RLS secara instan tanpa menghapus atau mengubah struktur tabel yang sudah ada.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">
+                  Script Solusi Izin (Cepat &amp; Aman Tanpa Hapus Data)
+                </span>
+                <button
+                  type="button"
+                  onClick={copyFixToClipboard}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  {isFixCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {isFixCopied ? 'Script Tersalin!' : 'Salin Script Solusi (1-Klik)'}
+                </button>
+              </div>
+
+              <pre className="p-4 bg-gray-950 text-emerald-400 font-mono text-xs rounded-xl overflow-x-auto max-h-72 leading-relaxed border border-gray-800 shadow-inner select-all">
+                {supabaseQuickPermissionFixSql}
+              </pre>
+
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1.5 text-gray-700">
+                <div className="font-bold text-gray-900">Langkah Menjalankan di Supabase:</div>
+                <ol className="list-decimal list-inside space-y-1 text-gray-600">
+                  <li>Klik tombol <b>Salin Script Solusi (1-Klik)</b> di atas.</li>
+                  <li>Buka tab baru ke dashboard Supabase Anda &gt; menu <b>SQL Editor</b> (ikon terminal di sidebar kiri).</li>
+                  <li>Klik <b>New Query</b>, tempel (Paste) script yang baru disalin.</li>
+                  <li>Klik tombol hijau <b>Run</b> (atau tekan Ctrl+Enter).</li>
+                  <li>Kembali ke aplikasi ini dan error <i>permission denied</i> langsung hilang 100%!</li>
+                </ol>
+              </div>
             </div>
           )}
         </div>

@@ -13,8 +13,9 @@ import {
   Briefcase,
   ArrowRight,
   Database,
+  Radio,
 } from 'lucide-react';
-import { getSupabase } from '../lib/supabase';
+import { getSupabase, subscribeToRealtime } from '../lib/supabase';
 
 interface DashboardPageProps {
   onNavigateToProspects: (filterStatus?: ProspectStatus) => void;
@@ -55,6 +56,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   useEffect(() => {
     loadData();
   }, [currentUser]);
+
+  // Real-time synchronization: refresh dashboard metrics instantly on any field update
+  useEffect(() => {
+    const unsubProspects = subscribeToRealtime('prospects', () => {
+      loadData();
+    });
+    const unsubProfiles = subscribeToRealtime('profiles', () => {
+      loadData();
+    });
+    const unsubZones = subscribeToRealtime('zones', () => {
+      loadData();
+    });
+
+    return () => {
+      unsubProspects();
+      unsubProfiles();
+      unsubZones();
+    };
+  }, []);
 
   // Compute metrics from actual database
   const totalCount = prospects.length;

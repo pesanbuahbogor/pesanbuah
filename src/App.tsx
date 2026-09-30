@@ -10,7 +10,9 @@ import { BusinessTypesPage } from './pages/BusinessTypesPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { SupabaseModal } from './components/SupabaseModal';
 import { BottomNav } from './components/BottomNav';
+import { PermissionDeniedBanner } from './components/PermissionDeniedBanner';
 import { ProspectStatus } from './types';
+import { db } from './lib/db';
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -19,6 +21,11 @@ const AppContent: React.FC = () => {
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [initialStatusFilter, setInitialStatusFilter] = useState<ProspectStatus | undefined>(undefined);
   const [isCreateOpenInitially, setIsCreateOpenInitially] = useState(false);
+
+  // Auto-sync initial master data and prospects to Supabase in background whenever app starts
+  React.useEffect(() => {
+    db.ensureAutoSyncedWithSupabase();
+  }, []);
 
   // If auth is loading
   if (isLoading) {
@@ -64,6 +71,11 @@ const AppContent: React.FC = () => {
         }}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
       />
+
+      {/* Global Permission Alert Banner if Supabase table permissions are denied */}
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-3">
+        <PermissionDeniedBanner />
+      </div>
 
       {/* Main Page View */}
       <main className="flex-1 pb-16 sm:pb-8">
