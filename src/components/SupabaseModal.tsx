@@ -27,7 +27,11 @@ import {
 } from '../lib/supabase';
 import { db } from '../lib/db';
 import { useToast } from './Toast';
-import { supabaseSetupSql, supabaseQuickPermissionFixSql } from '../lib/supabase-schema-sql';
+import {
+  supabaseSetupSql,
+  supabaseQuickPermissionFixSql,
+  supabaseAddPotentialNeedsSql,
+} from '../lib/supabase-schema-sql';
 
 interface SupabaseModalProps {
   isOpen: boolean;
@@ -42,7 +46,8 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
   const [anonKey, setAnonKey] = useState(currentConfig.key);
   const [isCopied, setIsCopied] = useState(false);
   const [isFixCopied, setIsFixCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'config' | 'sql' | 'fix'>('config');
+  const [isMigrateCopied, setIsMigrateCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<'config' | 'sql' | 'fix' | 'migrate'>('config');
   const [showGuide, setShowGuide] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -255,6 +260,13 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
     setTimeout(() => setIsFixCopied(false), 2000);
   };
 
+  const copyMigrateToClipboard = () => {
+    navigator.clipboard.writeText(supabaseAddPotentialNeedsSql);
+    setIsMigrateCopied(true);
+    success('Script SQL Tambah Kolom berhasil disalin ke clipboard!');
+    setTimeout(() => setIsMigrateCopied(false), 2000);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -337,6 +349,17 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
           >
             <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
             Solusi Izin (Fix 42501)
+          </button>
+          <button
+            onClick={() => setActiveTab('migrate')}
+            className={`pb-3 px-3 text-sm font-semibold border-b-2 transition flex items-center gap-1.5 ${
+              activeTab === 'migrate'
+                ? 'border-emerald-600 text-emerald-700 font-bold'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            Update Kolom Baru (SQL)
           </button>
         </div>
 
@@ -560,7 +583,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
                 {sqlCode}
               </pre>
             </div>
-          ) : (
+          ) : activeTab === 'fix' ? (
             <div className="space-y-4">
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-950">
                 <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
@@ -602,6 +625,46 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
                   <li>Klik tombol hijau <b>Run</b> (atau tekan Ctrl+Enter).</li>
                   <li>Kembali ke aplikasi ini dan error <i>permission denied</i> langsung hilang 100%!</li>
                 </ol>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-xs text-emerald-950">
+                <div className="flex items-center gap-2 font-bold text-sm text-emerald-900">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  Update Kolom "potential_needs" di Supabase
+                </div>
+                <p className="leading-relaxed">
+                  Jika tabel <code>prospects</code> di Supabase Anda dibuat sebelum penambahan fitur <b>Potensial Kebutuhan Tambahan Customer (Upselling)</b>, jalankan script ini sekali di Supabase SQL Editor.
+                </p>
+                <p className="leading-relaxed text-emerald-800">
+                  Script ini aman (menggunakan <code>ADD COLUMN IF NOT EXISTS</code>), tidak akan menghapus data customer yang sudah ada, dan langsung menambahkan kolom baru ke database cloud.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">
+                  Script SQL Penambahan Kolom Baru:
+                </span>
+                <button
+                  type="button"
+                  onClick={copyMigrateToClipboard}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  {isMigrateCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {isMigrateCopied ? 'Script Tersalin!' : 'Salin Script Update Kolom (1-Klik)'}
+                </button>
+              </div>
+
+              <pre className="p-4 bg-gray-950 text-emerald-400 font-mono text-xs rounded-xl overflow-x-auto max-h-72 leading-relaxed border border-gray-800 shadow-inner select-all">
+                {supabaseAddPotentialNeedsSql}
+              </pre>
+
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1 text-gray-700">
+                <p className="font-bold text-gray-900">Cara Menjalankan:</p>
+                <p className="text-gray-600">
+                  1. Salin script di atas &gt; 2. Buka Supabase SQL Editor &gt; 3. Klik New Query &gt; 4. Paste &amp; Run.
+                </p>
               </div>
             </div>
           )}

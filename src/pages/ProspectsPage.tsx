@@ -32,12 +32,14 @@ import {
   AlertCircle,
   ShoppingBag,
   Download,
+  Upload,
   FileSpreadsheet,
   FileText,
   ChevronDown,
 } from 'lucide-react';
 import { ProspectFormModal } from '../components/ProspectFormModal';
 import { ProspectDetailModal } from '../components/ProspectDetailModal';
+import { ProspectImportModal } from '../components/ProspectImportModal';
 import { exportProspectsToCsv, exportProspectsToXls } from '../lib/exportUtils';
 
 interface ProspectsPageProps {
@@ -74,6 +76,7 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   const [isDeletingDirect, setIsDeletingDirect] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const loadAllData = async () => {
     setIsLoading(true);
@@ -296,6 +299,19 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Import CSV Button - Available to Owner and Manager for backup/restore & server migration */}
+          {canDeleteProspect && (
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              title="Import Data Calon Customer dari File CSV (Restore / Migrasi Server)"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-bold rounded-xl shadow-2xs transition cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <span>Import CSV</span>
+            </button>
+          )}
+
           {/* Export Data Button - Exclusively for Owner (and Manager if needed) */}
           {isOwner && (
             <div className="relative">
@@ -778,6 +794,20 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
         businessTypes={businessTypes}
         zones={zones}
         profiles={profiles}
+      />
+
+      {/* Import Modal */}
+      <ProspectImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => {
+          setIsImportModalOpen(false);
+          loadAllData();
+        }}
+        businessTypes={businessTypes}
+        zones={zones}
+        profiles={profiles}
+        existingProspects={prospects}
       />
 
       {/* Direct Delete Confirmation Modal (Manager/Owner Only) */}

@@ -15,6 +15,7 @@ import {
   Database,
   Radio,
   Download,
+  Upload,
   FileSpreadsheet,
   FileText,
   ChevronDown,
@@ -22,6 +23,7 @@ import {
 import { getSupabase, subscribeToRealtime } from '../lib/supabase';
 import { exportProspectsToCsv, exportProspectsToXls } from '../lib/exportUtils';
 import { useToast } from '../components/Toast';
+import { ProspectImportModal } from '../components/ProspectImportModal';
 
 interface DashboardPageProps {
   onNavigateToProspects: (filterStatus?: ProspectStatus) => void;
@@ -42,6 +44,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const isSupabaseConnected = !!getSupabase();
 
   const loadData = async () => {
@@ -163,6 +166,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Import CSV Button - Visible to Owner for quick database restore */}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              title="Import Data Calon Customer dari CSV (Restore / Migrasi Server)"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-2xs transition cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <span>Import</span>
+            </button>
+          )}
+
           {/* Export Data Button - Exclusively for Owner */}
           {isOwner && (
             <div className="relative">
@@ -541,6 +557,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Import Modal */}
+      <ProspectImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => {
+          setIsImportModalOpen(false);
+          loadData();
+        }}
+        businessTypes={businessTypes}
+        zones={zones}
+        profiles={profiles}
+        existingProspects={prospects}
+      />
     </div>
   );
 };

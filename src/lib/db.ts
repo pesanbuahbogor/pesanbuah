@@ -1041,6 +1041,195 @@ export const db = {
     return true;
   },
 
+  /**
+   * Bulk import / restore prospects from CSV.
+   * Performs UPSERT so that existing IDs or phone numbers get updated,
+   * while new ones get inserted without duplication.
+   */
+  async importProspectsBatch(
+    items: {
+      id?: string;
+      business_name: string;
+      pic_name: string;
+      phone: string;
+      business_type_id: string;
+      address: string;
+      latitude?: number | null;
+      longitude?: number | null;
+      gps_captured_at?: string | null;
+      zone_id?: string | null;
+      sales_id?: string | null;
+      status?: ProspectStatus;
+      notes?: string | null;
+      potential_needs?: string | null;
+    }[],
+    currentUser: Profile
+  ): Promise<{ inserted: number; updated: number }> {
+    if (currentUser.role === 'Sales') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang berhak mengimpor data.');
+    }
+
+    if (!items.length) {
+      return { inserted: 0, updated: 0 };
+    }
+
+    const now = new Date().toISOString();
+    const supabase = getSupabase();
+
+    if (supabase) {
+      // 1. Fetch existing prospects to identify whether each row is insert vs update
+      const { data: existingRows, error: fetchErr } = await supabase
+        .from('prospects')
+        .select('id, phone');
+
+      if (fetchErr) {
+        throw new Error(`Gagal membaca data dari Supabase: ${fetchErr.message}`);
+      }
+
+      const existingPhoneMap = new Map<string, string>();
+      const existingIdSet = new Set<string>();
+
+      (existingRows || []).forEach((row: any) => {
+        existingIdSet.add(row.id);
+        const norm = normalizePhoneNumber(row.phone);
+        if (norm) existingPhoneMap.set(norm, row.id);
+      });
+
+      let insertedCount = 0;
+      let updatedCount = 0;
+
+      const preparedList: Prospect[] = items.map((item) => {
+        const normPhone = normalizePhoneNumber(item.phone);
+        let targetId = item.id;
+
+        // If ID matches existing or Phone matches existing, update that ID
+        if (!targetId || !existingIdSet.has(targetId)) {
+          if (normPhone && existingPhoneMap.has(normPhone)) {
+            targetId = existingPhoneMap.get(normPhone)!;
+            updatedCount++;
+          } else {
+            targetId = targetId || generateUniqueId('prsp');
+            insertedCount++;
+          }
+        } else {
+          updatedCount++;
+        }
+
+        return {
+          id: targetId,
+          business_name: item.business_name.trim(),
+          pic_name: item.pic_name.trim() || item.business_name.trim(),
+          phone: item.phone.trim(),
+          business_type_id: item.business_type_id,
+          address: item.address.trim() || 'Bogor',
+          latitude: item.latitude ?? null,
+          longitude: item.longitude ?? null,
+          gps_captured_at: item.gps_captured_at ?? null,
+          zone_id: item.zone_id || null,
+          sales_id: item.sales_id || null,
+          status: item.status || 'Prospect',
+          notes: item.notes?.trim() || null,
+          potential_needs: item.potential_needs?.trim() || null,
+          created_by: currentUser.id,
+          created_at: now,
+          updated_at: now,
+        };
+      });
+
+      // Upsert in batches of 50 for safety
+      const batchSize = 50;
+      for (let i = 0; i < preparedList.length; i += batchSize) {
+        const chunk = preparedList.slice(i, i + batchSize);
+        const { error: upsertErr } = await supabase
+          .from('prospects')
+          .upsert(chunk, { onConflict: 'id' });
+
+        if (upsertErr) {
+          console.error('Supabase bulk upsert error:', upsertErr);
+          throw new Error(
+            `Gagal import ke Supabase pada baris ${i + 1}-${i + chunk.length}: ${upsertErr.message}. Pastikan script SQL sudah dijalankan.`
+          );
+        }
+      }
+
+      return { inserted: insertedCount, updated: updatedCount };
+    }
+
+    // Local Storage Fallback
+    const raw = localStorage.getItem(STORAGE_PROSPECTS);
+    const prospects: Prospect[] = raw ? JSON.parse(raw) : [];
+
+    const existingPhoneMap = new Map<string, number>();
+    const existingIdMap = new Map<string, number>();
+
+    prospects.forEach((p, idx) => {
+      existingIdMap.set(p.id, idx);
+      const norm = normalizePhoneNumber(p.phone);
+      if (norm) existingPhoneMap.set(norm, idx);
+    });
+
+    let insertedCount = 0;
+    let updatedCount = 0;
+
+    items.forEach((item) => {
+      const normPhone = normalizePhoneNumber(item.phone);
+      let matchIdx = item.id ? existingIdMap.get(item.id) : undefined;
+      if (matchIdx === undefined && normPhone) {
+        matchIdx = existingPhoneMap.get(normPhone);
+      }
+
+      if (matchIdx !== undefined) {
+        // Update
+        prospects[matchIdx] = {
+          ...prospects[matchIdx],
+          business_name: item.business_name.trim(),
+          pic_name: item.pic_name.trim() || prospects[matchIdx].pic_name,
+          phone: item.phone.trim(),
+          business_type_id: item.business_type_id || prospects[matchIdx].business_type_id,
+          address: item.address.trim() || prospects[matchIdx].address,
+          latitude: item.latitude !== undefined ? item.latitude : prospects[matchIdx].latitude,
+          longitude: item.longitude !== undefined ? item.longitude : prospects[matchIdx].longitude,
+          gps_captured_at: item.gps_captured_at !== undefined ? item.gps_captured_at : prospects[matchIdx].gps_captured_at,
+          zone_id: item.zone_id !== undefined ? item.zone_id : prospects[matchIdx].zone_id,
+          sales_id: item.sales_id !== undefined ? item.sales_id : prospects[matchIdx].sales_id,
+          status: item.status || prospects[matchIdx].status,
+          notes: item.notes !== undefined ? item.notes : prospects[matchIdx].notes,
+          potential_needs: item.potential_needs !== undefined ? item.potential_needs : prospects[matchIdx].potential_needs,
+          updated_at: now,
+        };
+        updatedCount++;
+      } else {
+        // Insert
+        const newRecord: Prospect = {
+          id: item.id || generateUniqueId('prsp'),
+          business_name: item.business_name.trim(),
+          pic_name: item.pic_name.trim() || item.business_name.trim(),
+          phone: item.phone.trim(),
+          business_type_id: item.business_type_id,
+          address: item.address.trim() || 'Bogor',
+          latitude: item.latitude ?? null,
+          longitude: item.longitude ?? null,
+          gps_captured_at: item.gps_captured_at ?? null,
+          zone_id: item.zone_id || null,
+          sales_id: item.sales_id || null,
+          status: item.status || 'Prospect',
+          notes: item.notes?.trim() || null,
+          potential_needs: item.potential_needs?.trim() || null,
+          created_by: currentUser.id,
+          created_at: now,
+          updated_at: now,
+        };
+        prospects.push(newRecord);
+        existingIdMap.set(newRecord.id, prospects.length - 1);
+        if (normPhone) existingPhoneMap.set(normPhone, prospects.length - 1);
+        insertedCount++;
+      }
+    });
+
+    localStorage.setItem(STORAGE_PROSPECTS, JSON.stringify(prospects));
+    return { inserted: insertedCount, updated: updatedCount };
+  },
+
   // --------------------------------------------------------------------------
   // PROSPECT PHOTOS (DIRECT SUPABASE / BASE64 STORAGE)
   // --------------------------------------------------------------------------

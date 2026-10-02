@@ -226,3 +226,16 @@ ALTER TABLE public.business_types DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prospects DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prospect_photos DISABLE ROW LEVEL SECURITY;
 `;
+
+export const supabaseAddPotentialNeedsSql = `-- ==============================================================================
+-- UPDATE SKEMA: TAMBAH KOLOM POTENSI KEBUTUHAN TAMBAHAN (UPSELLING)
+-- Jalankan script ini jika tabel prospects Anda sudah ada di Supabase:
+-- ==============================================================================
+
+-- 1. Tambah kolom potential_needs jika belum ada
+ALTER TABLE public.prospects 
+ADD COLUMN IF NOT EXISTS potential_needs TEXT;
+
+-- 2. Pastikan hak akses tetap terbuka untuk role anon dan authenticated
+GRANT ALL ON TABLE public.prospects TO anon, authenticated, service_role;
+`;
