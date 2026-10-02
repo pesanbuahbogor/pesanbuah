@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/db';
-import { Prospect, Profile, Zone, ProspectStatus } from '../types';
+import { Prospect, Profile, Zone, ProspectStatus, BusinessType } from '../types';
 import {
   Users,
   UserPlus,
@@ -14,8 +14,14 @@ import {
   ArrowRight,
   Database,
   Radio,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  ChevronDown,
 } from 'lucide-react';
 import { getSupabase, subscribeToRealtime } from '../lib/supabase';
+import { exportProspectsToCsv, exportProspectsToXls } from '../lib/exportUtils';
+import { useToast } from '../components/Toast';
 
 interface DashboardPageProps {
   onNavigateToProspects: (filterStatus?: ProspectStatus) => void;
@@ -29,23 +35,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onOpenSupabaseModal,
 }) => {
   const { currentUser, isSales, isOwner } = useAuth();
+  const { success, error: toastError } = useToast();
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const isSupabaseConnected = !!getSupabase();
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [prospectsData, profilesData, zonesData] = await Promise.all([
+      const [prospectsData, profilesData, zonesData, businessTypesData] = await Promise.all([
         db.getProspects(currentUser),
         db.getProfiles(),
         db.getZones(),
+        db.getBusinessTypes(),
       ]);
       setProspects(prospectsData);
       setProfiles(profilesData);
       setZones(zonesData);
+      setBusinessTypes(businessTypesData);
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
@@ -152,6 +163,88 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Export Data Button - Exclusively for Owner */}
+          {isOwner && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsExportMenuOpen((prev) => !prev)}
+                title="Ekspor Seluruh Database Calon Customer"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-2xs transition cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Export</span>
+                <ChevronDown className="w-3 h-3 text-gray-400" />
+              </button>
+
+              {isExportMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsExportMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-1.5 w-60 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95">
+                    <div className="px-2 py-1 border-b border-gray-100">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Export Laporan ({prospects.length} Data)
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (prospects.length === 0) {
+                          toastError('Belum ada data calon customer untuk diekspor.');
+                          return;
+                        }
+                        const bMap = new Map(businessTypes.map((t) => [t.id, t.name]));
+                        const zMap = new Map(zones.map((z) => [z.id, z.name]));
+                        const pMap = new Map(profiles.map((p) => [p.id, p.name]));
+                        exportProspectsToXls(prospects, { businessTypeMap: bMap, zoneMap: zMap, profileMap: pMap });
+                        success(`Berhasil mengunduh ${prospects.length} data dalam format Excel (.XLS)`);
+                        setIsExportMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-emerald-50 text-gray-800 hover:text-emerald-900 transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <div className="p-1 rounded bg-emerald-100 text-emerald-700">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-[11px]">Excel Spreadsheet (.XLS)</div>
+                        <div className="text-[9px] text-gray-400">Rapi dengan format tabel & warna</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (prospects.length === 0) {
+                          toastError('Belum ada data calon customer untuk diekspor.');
+                          return;
+                        }
+                        const bMap = new Map(businessTypes.map((t) => [t.id, t.name]));
+                        const zMap = new Map(zones.map((z) => [z.id, z.name]));
+                        const pMap = new Map(profiles.map((p) => [p.id, p.name]));
+                        exportProspectsToCsv(prospects, { businessTypeMap: bMap, zoneMap: zMap, profileMap: pMap });
+                        success(`Berhasil mengunduh ${prospects.length} data dalam format CSV`);
+                        setIsExportMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-blue-50 text-gray-800 hover:text-blue-900 transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <div className="p-1 rounded bg-blue-100 text-blue-700">
+                        <FileText className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-[11px]">Comma Separated (.CSV)</div>
+                        <div className="text-[9px] text-gray-400">Format teks UTF-8 Excel</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Supabase Database Settings - Visible strictly to Owner only */}
           {isOwner && onOpenSupabaseModal && (
             <button
@@ -410,8 +503,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         {p.status}
                       </span>
                     </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5 truncate">
-                      {p.pic_name} · {p.phone}
+                    <div className="text-[10px] text-gray-500 mt-0.5 truncate flex items-center gap-1.5">
+                      <span>{p.pic_name} · {p.phone}</span>
+                      {p.potential_needs && (
+                        <span className="text-emerald-700 bg-emerald-50 px-1 rounded text-[9px] font-medium border border-emerald-200/60 truncate max-w-[120px]">
+                          Potensi: {p.potential_needs}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">

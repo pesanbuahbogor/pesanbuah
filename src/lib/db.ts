@@ -888,6 +888,7 @@ export const db = {
       sales_id?: string | null;
       status?: ProspectStatus;
       notes?: string | null;
+      potential_needs?: string | null;
     },
     currentUser: Profile
   ): Promise<Prospect> {
@@ -917,6 +918,7 @@ export const db = {
       sales_id: assignedSalesId,
       status: data.status || 'Prospect',
       notes: data.notes?.trim() || null,
+      potential_needs: data.potential_needs?.trim() || null,
       created_by: currentUser.id,
       created_at: now,
       updated_at: now,

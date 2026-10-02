@@ -47,6 +47,7 @@ export interface Prospect {
   sales_id: string | null;
   status: ProspectStatus;
   notes: string | null;
+  potential_needs?: string | null; // Potensi kebutuhan tambahan customer (sayur, mie, santan, bumbu, buah dll untuk upselling)
   created_by: string;
   created_at: string;
   updated_at: string;

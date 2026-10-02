@@ -76,10 +76,14 @@ CREATE TABLE public.prospects (
     sales_id TEXT,
     status prospect_status NOT NULL DEFAULT 'Prospect',
     notes TEXT,
+    potential_needs TEXT, -- Potensi kebutuhan tambahan customer (sayur, mie, santan, bumbu, buah dll untuk upselling)
     created_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Tambahkan kolom jika tabel prospects sudah ada sebelumnya:
+ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS potential_needs TEXT;
 
 -- 9. Prospect Photos
 CREATE TABLE public.prospect_photos (

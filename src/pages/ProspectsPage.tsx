@@ -30,9 +30,15 @@ import {
   ExternalLink,
   Radio,
   AlertCircle,
+  ShoppingBag,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  ChevronDown,
 } from 'lucide-react';
 import { ProspectFormModal } from '../components/ProspectFormModal';
 import { ProspectDetailModal } from '../components/ProspectDetailModal';
+import { exportProspectsToCsv, exportProspectsToXls } from '../lib/exportUtils';
 
 interface ProspectsPageProps {
   initialStatusFilter?: ProspectStatus;
@@ -64,7 +70,10 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [selectedProspectDetail, setSelectedProspectDetail] = useState<Prospect | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [deleteConfirmProspect, setDeleteConfirmProspect] = useState<Prospect | null>(null);
+  const [isDeletingDirect, setIsDeletingDirect] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   const loadAllData = async () => {
     setIsLoading(true);
@@ -121,15 +130,16 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   // Filtered prospects based on search & filters (Section 11)
   const filteredProspects = useMemo(() => {
     return prospects.filter((p) => {
-      // 1. Search filter: Nama Usaha, Nama PIC, No HP/WA, Alamat
+      // 1. Search filter: Nama Usaha, Nama PIC, No HP/WA, Alamat, Potensial Kebutuhan
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchName = p.business_name.toLowerCase().includes(query);
         const matchPic = p.pic_name.toLowerCase().includes(query);
         const matchPhone = p.phone.toLowerCase().includes(query);
         const matchAddress = p.address.toLowerCase().includes(query);
+        const matchPotential = p.potential_needs ? p.potential_needs.toLowerCase().includes(query) : false;
 
-        if (!matchName && !matchPic && !matchPhone && !matchAddress) {
+        if (!matchName && !matchPic && !matchPhone && !matchAddress && !matchPotential) {
           return false;
         }
       }
@@ -187,6 +197,9 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
     }
   };
 
+  // Permissions: Only Owner and Manager can delete prospect
+  const canDeleteProspect = isOwner || isManager;
+
   const handleOpenDetail = (p: Prospect) => {
     setSelectedProspectDetail(p);
     setIsDetailModalOpen(true);
@@ -201,6 +214,56 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   const handleOpenCreate = () => {
     setEditingProspect(null);
     setIsFormModalOpen(true);
+  };
+
+  const handleDeleteDirect = async () => {
+    if (!deleteConfirmProspect || !currentUser) return;
+    if (!canDeleteProspect) {
+      toastError('Akses Ditolak: Hanya Manager dan Owner yang berhak menghapus data.');
+      return;
+    }
+
+    setIsDeletingDirect(true);
+    try {
+      await db.deleteProspect(deleteConfirmProspect.id, currentUser);
+      success(`Calon customer "${deleteConfirmProspect.business_name}" berhasil dihapus.`);
+      setDeleteConfirmProspect(null);
+      loadAllData();
+    } catch (err: any) {
+      toastError(err?.message || 'Gagal menghapus data calon customer.');
+    } finally {
+      setIsDeletingDirect(false);
+    }
+  };
+
+  const handleExportCsv = (filteredOnly = false) => {
+    const dataToExport = filteredOnly ? filteredProspects : prospects;
+    if (dataToExport.length === 0) {
+      toastError('Tidak ada data calon customer untuk diekspor.');
+      return;
+    }
+    exportProspectsToCsv(dataToExport, {
+      businessTypeMap,
+      zoneMap,
+      profileMap,
+    });
+    success(`Berhasil mengunduh ${dataToExport.length} data dalam format CSV.`);
+    setIsExportMenuOpen(false);
+  };
+
+  const handleExportXls = (filteredOnly = false) => {
+    const dataToExport = filteredOnly ? filteredProspects : prospects;
+    if (dataToExport.length === 0) {
+      toastError('Tidak ada data calon customer untuk diekspor.');
+      return;
+    }
+    exportProspectsToXls(dataToExport, {
+      businessTypeMap,
+      zoneMap,
+      profileMap,
+    });
+    success(`Berhasil mengunduh ${dataToExport.length} data dalam format XLS (Excel).`);
+    setIsExportMenuOpen(false);
   };
 
   return (
@@ -232,13 +295,117 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-3.5 h-3.5" />
-          Tambah Calon Customer
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Export Data Button - Exclusively for Owner (and Manager if needed) */}
+          {isOwner && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsExportMenuOpen((prev) => !prev)}
+                title="Ekspor Data Calon Customer (CSV / Excel XLS)"
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-xs font-bold rounded-xl shadow-2xs transition cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Export Data</span>
+                <ChevronDown className="w-3 h-3 text-gray-400" />
+              </button>
+
+              {isExportMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsExportMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-1.5 w-64 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95">
+                    <div className="px-2.5 py-1.5 border-b border-gray-100">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Pilihan Format Export (Owner)
+                      </p>
+                      <p className="text-[11px] text-gray-600 mt-0.5">
+                        {hasActiveFilters ? (
+                          <span>
+                            Menyaring <strong>{filteredProspects.length}</strong> dari {prospects.length} data
+                          </span>
+                        ) : (
+                          <span>Total <strong>{prospects.length}</strong> data tersimpan</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* XLS (Excel) Option */}
+                    <button
+                      type="button"
+                      onClick={() => handleExportXls(hasActiveFilters)}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-emerald-50 text-gray-800 hover:text-emerald-900 transition flex items-start gap-2.5 cursor-pointer group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 group-hover:bg-emerald-200 shrink-0 mt-0.5">
+                        <FileSpreadsheet className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold flex items-center gap-1">
+                          <span>Export Excel (.XLS)</span>
+                          <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-semibold">
+                            Rekomendasi
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          Format tabel rapi, warna status, siap dibuka di Microsoft Excel / LibreOffice
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* CSV Option */}
+                    <button
+                      type="button"
+                      onClick={() => handleExportCsv(hasActiveFilters)}
+                      className="w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-blue-50 text-gray-800 hover:text-blue-900 transition flex items-start gap-2.5 cursor-pointer group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-200 shrink-0 mt-0.5">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold">Export CSV (.CSV)</div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          Format teks UTF-8 murni, cocok untuk import sistem lain atau spreadsheet
+                        </p>
+                      </div>
+                    </button>
+
+                    {hasActiveFilters && (
+                      <div className="pt-1.5 border-t border-gray-100 px-2 flex flex-col gap-1">
+                        <p className="text-[9px] text-gray-400">Atau ekspor seluruh database:</p>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleExportXls(false)}
+                            className="flex-1 py-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition text-center cursor-pointer"
+                          >
+                            Semua XLS ({prospects.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleExportCsv(false)}
+                            className="flex-1 py-1 text-[10px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition text-center cursor-pointer"
+                          >
+                            Semua CSV ({prospects.length})
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={handleOpenCreate}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Tambah Calon Customer
+          </button>
+        </div>
       </div>
 
       {/* Database Error Banner if Supabase query fails */}
@@ -272,7 +439,7 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari Nama Usaha, PIC, No. HP / WA, atau Alamat..."
+            placeholder="Cari Nama Usaha, PIC, No. HP, Alamat, atau Kebutuhan (sawi, toge, mie, santan)..."
             className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden text-gray-900 placeholder:text-gray-400"
           />
         </div>
@@ -432,6 +599,12 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
                         <td className="py-2.5 px-3">
                           <div className="font-bold text-gray-900 text-xs">{p.business_name}</div>
                           <div className="text-[11px] text-gray-500">PIC: {p.pic_name}</div>
+                          {p.potential_needs && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-800 font-medium bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 max-w-[200px] truncate" title={`Potensial Kebutuhan: ${p.potential_needs}`}>
+                              <ShoppingBag className="w-2.5 h-2.5 shrink-0 text-emerald-600" />
+                              <span className="truncate">{p.potential_needs}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-xs font-medium text-gray-700">
                           {businessTypeMap.get(p.business_type_id) || 'Lainnya'}
@@ -470,17 +643,26 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
                             <button
                               onClick={() => handleOpenDetail(p)}
                               title="Lihat Detail"
-                              className="p-1 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition"
+                              className="p-1 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenEdit(p)}
                               title="Edit"
-                              className="p-1 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition"
+                              className="p-1 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition cursor-pointer"
                             >
                               <Edit className="w-3.5 h-3.5" />
                             </button>
+                            {canDeleteProspect && (
+                              <button
+                                onClick={() => setDeleteConfirmProspect(p)}
+                                title="Hapus Data (Khusus Manager/Owner)"
+                                className="p-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -529,6 +711,14 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
                       <Building className="w-3 h-3 text-gray-400 shrink-0 mt-0.5" />
                       <span className="line-clamp-2">{p.address}</span>
                     </div>
+                    {p.potential_needs && (
+                      <div className="flex items-start gap-1.5 text-emerald-800 pt-1 border-t border-gray-200/60 font-medium">
+                        <ShoppingBag className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="line-clamp-1 text-[10px]">
+                          <strong>Potensi:</strong> {p.potential_needs}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-1 border-t border-gray-100 text-[11px] text-gray-500">
@@ -540,6 +730,19 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
                         <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded-md">
                           <MapPin className="w-2.5 h-2.5" /> GPS
                         </span>
+                      )}
+                      {canDeleteProspect && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmProspect(p);
+                          }}
+                          title="Hapus Calon Customer"
+                          className="p-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                       <span className="text-emerald-700 font-bold flex items-center gap-0.5 text-xs">
                         Detail <ChevronRight className="w-3.5 h-3.5" />
@@ -576,6 +779,52 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
         zones={zones}
         profiles={profiles}
       />
+
+      {/* Direct Delete Confirmation Modal (Manager/Owner Only) */}
+      {deleteConfirmProspect && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border border-gray-100 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-100 text-rose-600 shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-bold text-gray-900 text-sm">Hapus Data Calon Customer?</h4>
+                <p className="text-xs text-gray-600 mt-1">
+                  Apakah Anda yakin ingin menghapus data usaha{' '}
+                  <strong className="text-gray-900 font-bold">
+                    "{deleteConfirmProspect.business_name}"
+                  </strong>{' '}
+                  (PIC: {deleteConfirmProspect.pic_name})?
+                </p>
+                <p className="text-[11px] text-rose-600 font-medium mt-1">
+                  Tindakan ini permanen dan hanya dapat dilakukan oleh Manager / Owner.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmProspect(null)}
+                disabled={isDeletingDirect}
+                className="px-3.5 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteDirect}
+                disabled={isDeletingDirect}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {isDeletingDirect ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

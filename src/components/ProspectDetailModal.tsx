@@ -4,7 +4,6 @@ import {
   BusinessType,
   Zone,
   Profile,
-  ProspectPhoto,
   ProspectStatus,
 } from '../types';
 import { db } from '../lib/db';
@@ -21,10 +20,10 @@ import {
   Edit2,
   Trash2,
   ExternalLink,
-  Camera,
   CheckCircle2,
-  Upload,
   AlertTriangle,
+  ShoppingBag,
+  Sparkles,
 } from 'lucide-react';
 import { MapView } from './MapView';
 
@@ -54,27 +53,13 @@ export const ProspectDetailModal: React.FC<ProspectDetailModalProps> = ({
   const { currentUser, isOwner, isManager } = useAuth();
   const { success, error: toastError } = useToast();
 
-  const [photos, setPhotos] = useState<ProspectPhoto[]>([]);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [currentProspect, setCurrentProspect] = useState<Prospect | null>(prospect);
 
   useEffect(() => {
     setCurrentProspect(prospect);
-    if (prospect) {
-      loadPhotos(prospect.id);
-    }
   }, [prospect]);
-
-  const loadPhotos = async (prospectId: string) => {
-    try {
-      const p = await db.getProspectPhotos(prospectId);
-      setPhotos(p);
-    } catch (err) {
-      console.error('Failed to load photos:', err);
-    }
-  };
 
   if (!isOpen || !currentProspect) return null;
 
@@ -119,35 +104,6 @@ export const ProspectDetailModal: React.FC<ProspectDetailModalProps> = ({
       toastError(err.message || 'Gagal menghapus prospect.');
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  // Photo Upload Handler
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setIsUploadingPhoto(true);
-      try {
-        await db.uploadPhoto(currentProspect.id, file);
-        await loadPhotos(currentProspect.id);
-        success('Foto usaha berhasil diunggah!');
-      } catch (err: any) {
-        toastError(err.message || 'Gagal mengunggah foto.');
-      } finally {
-        setIsUploadingPhoto(false);
-      }
-    }
-  };
-
-  // Photo Delete Handler
-  const handleDeletePhoto = async (photoId: string) => {
-    if (!confirm('Hapus foto ini?')) return;
-    try {
-      await db.deletePhoto(photoId);
-      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-      success('Foto berhasil dihapus.');
-    } catch (err: any) {
-      toastError(err.message || 'Gagal menghapus foto.');
     }
   };
 
@@ -320,59 +276,43 @@ export const ProspectDetailModal: React.FC<ProspectDetailModalProps> = ({
             </div>
           )}
 
-          {/* Foto Usaha Gallery (Section 12) */}
-          <div className="space-y-2">
+          {/* Potensial Kebutuhan Tambahan (Upselling Opportunities) */}
+          <div className="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-emerald-50/30 p-4 rounded-2xl border border-emerald-200/90 shadow-2xs space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Camera className="w-4 h-4 text-gray-600" />
-                Foto Usaha ({photos.length})
+              <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4 text-emerald-700" />
+                Potensial Kebutuhan Tambahan (Peluang Upselling)
               </span>
-              <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg cursor-pointer transition">
-                <Upload className="w-3.5 h-3.5" />
-                {isUploadingPhoto ? 'Mengunggah...' : 'Tambah Foto'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  disabled={isUploadingPhoto}
-                  className="hidden"
-                />
-              </label>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-200/60 px-2 py-0.5 rounded-full">
+                <Sparkles className="w-3 h-3 text-emerald-600" />
+                Siap Dipasok
+              </span>
             </div>
 
-            {photos.length === 0 ? (
-              <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center text-xs text-gray-400">
-                Belum ada foto usaha diunggah.
+            {currentProspect.potential_needs ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-emerald-900 leading-relaxed bg-white/90 p-3 rounded-xl border border-emerald-100 whitespace-pre-wrap">
+                  {currentProspect.potential_needs}
+                </p>
+                {/* Visual tags if comma-separated */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {currentProspect.potential_needs
+                    .split(',')
+                    .map((item, idx) => item.trim())
+                    .filter(Boolean)
+                    .map((item, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-100/90 text-emerald-900 px-2.5 py-1 rounded-lg border border-emerald-300/50"
+                      >
+                        🥬 {item}
+                      </span>
+                    ))}
+                </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {photos.map((ph) => (
-                  <div key={ph.id} className="relative group rounded-xl overflow-hidden border border-gray-200 shadow-2xs">
-                    <img
-                      src={ph.file_url}
-                      alt="Foto Usaha"
-                      className="w-full h-32 object-cover transition-transform group-hover:scale-105 duration-200"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <a
-                        href={ph.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 bg-white/90 rounded-lg text-gray-800 text-xs mr-2 hover:bg-white transition"
-                        title="Lihat ukuran penuh"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                      <button
-                        onClick={() => handleDeletePhoto(ph.id)}
-                        className="p-1.5 bg-rose-600 rounded-lg text-white text-xs hover:bg-rose-700 transition"
-                        title="Hapus foto"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="p-3 bg-white/60 rounded-xl border border-dashed border-emerald-200 text-xs text-emerald-700/80">
+                Belum ada data potensi kebutuhan tambahan. Edit data ini untuk menambahkan komoditas rutin (seperti sawi, toge, mie, santan, lemon, dll).
               </div>
             )}
           </div>

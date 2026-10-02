@@ -6,13 +6,13 @@ import { useToast } from './Toast';
 import {
   X,
   MapPin,
-  Camera,
   AlertTriangle,
   CheckCircle2,
   Navigation,
   Loader2,
-  UploadCloud,
-  Trash2,
+  Sparkles,
+  ShoppingBag,
+  Plus,
 } from 'lucide-react';
 import { MapView } from './MapView';
 
@@ -50,10 +50,7 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
   const [salesId, setSalesId] = useState<string>('');
   const [status, setStatus] = useState<ProspectStatus>('Prospect');
   const [notes, setNotes] = useState('');
-
-  // Photo upload
-  const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [potentialNeeds, setPotentialNeeds] = useState('');
 
   // States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,6 +58,33 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarningInfo | null>(null);
+
+  // Quick suggestions for potential upselling products
+  const quickUpsellItems = [
+    'Sawi',
+    'Toge',
+    'Mie Kuning/Basah',
+    'Santan Kelapa',
+    'Jeruk Peras',
+    'Lemon',
+    'Alpukat',
+    'Semangka',
+    'Melon',
+    'Cabai Rawit',
+    'Bawang Merah/Putih',
+    'Bumbu Dapur',
+  ];
+
+  const handleAddQuickItem = (item: string) => {
+    if (!potentialNeeds.trim()) {
+      setPotentialNeeds(item);
+    } else {
+      const items = potentialNeeds.split(',').map((s) => s.trim().toLowerCase());
+      if (!items.includes(item.toLowerCase())) {
+        setPotentialNeeds(`${potentialNeeds.trim()}, ${item}`);
+      }
+    }
+  };
 
   useEffect(() => {
     if (editProspect) {
@@ -76,8 +100,7 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
       setSalesId(editProspect.sales_id || '');
       setStatus(editProspect.status);
       setNotes(editProspect.notes || '');
-      setPhotoPreviewUrl(null);
-      setSelectedPhotoFile(null);
+      setPotentialNeeds(editProspect.potential_needs || '');
     } else {
       setBusinessName('');
       setPicName('');
@@ -91,8 +114,7 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
       setSalesId(currentUser?.role === 'Sales' ? currentUser.id : '');
       setStatus('Prospect');
       setNotes('');
-      setPhotoPreviewUrl(null);
-      setSelectedPhotoFile(null);
+      setPotentialNeeds('');
     }
     setFormErrors({});
     setGpsError(null);
@@ -176,21 +198,6 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
     );
   };
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedPhotoFile(file);
-      const url = URL.createObjectURL(file);
-      setPhotoPreviewUrl(url);
-    }
-  };
-
-  const removeSelectedPhoto = () => {
-    setSelectedPhotoFile(null);
-    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
-    setPhotoPreviewUrl(null);
-  };
-
   const validate = () => {
     const errors: { [key: string]: string } = {};
     if (!businessName.trim()) errors.businessName = 'Nama Usaha wajib diisi.';
@@ -216,10 +223,8 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      let savedProspect: Prospect;
-
       if (editProspect) {
-        savedProspect = await db.updateProspect(
+        await db.updateProspect(
           editProspect.id,
           {
             business_name: businessName,
@@ -234,12 +239,13 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
             sales_id: salesId || null,
             status,
             notes: notes || null,
+            potential_needs: potentialNeeds || null,
           },
           currentUser
         );
         success('Data Calon Customer berhasil diperbarui!');
       } else {
-        savedProspect = await db.createProspect(
+        await db.createProspect(
           {
             business_name: businessName,
             pic_name: picName,
@@ -253,20 +259,11 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
             sales_id: salesId || null,
             status,
             notes: notes || null,
+            potential_needs: potentialNeeds || null,
           },
           currentUser
         );
         success('Calon Customer baru berhasil disimpan!');
-      }
-
-      // Upload photo if selected
-      if (selectedPhotoFile && savedProspect) {
-        try {
-          await db.uploadPhoto(savedProspect.id, selectedPhotoFile);
-        } catch (uploadErr) {
-          console.error('Error uploading photo:', uploadErr);
-          warning('Data tersimpan, namun foto gagal diunggah.');
-        }
       }
 
       onSuccess();
@@ -574,58 +571,62 @@ export const ProspectFormModal: React.FC<ProspectFormModalProps> = ({
               </div>
             </div>
 
-            {/* Catatan (Opsional) */}
+            {/* Potensi Kebutuhan Tambahan (Upselling) */}
+            <div className="bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-emerald-950 uppercase flex items-center gap-1.5">
+                  <ShoppingBag className="w-4 h-4 text-emerald-700" />
+                  Potensial Kebutuhan Tambahan Customer (Upselling)
+                </label>
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  Peluang Penjualan
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-tight">
+                Catat barang/komoditas lain yang rutin dibutuhkan tempat usaha ini agar tim sales dapat menawarkan pasokan tambahan di kemudian hari.
+              </p>
+
+              <textarea
+                rows={2}
+                value={potentialNeeds}
+                onChange={(e) => setPotentialNeeds(e.target.value)}
+                placeholder="Contoh: Sawi, Toge, Mie Basah, Santan, Lemon 20kg/minggu, Jeruk Peras, Cabai Rawit..."
+                className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden resize-none text-gray-900 shadow-2xs font-medium placeholder:text-gray-400"
+              />
+
+              {/* Quick suggestion chips */}
+              <div className="space-y-1.5 pt-0.5">
+                <span className="text-[10px] font-bold text-emerald-900 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-emerald-600" /> Klik cepat untuk menambahkan:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {quickUpsellItems.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => handleAddQuickItem(item)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-100/80 border border-emerald-200 text-emerald-800 text-[11px] font-medium rounded-lg shadow-2xs transition active:scale-95 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3 text-emerald-600" />
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Catatan Sales (Opsional) */}
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                Catatan (Opsional)
+                Catatan Tambahan (Opsional)
               </label>
               <textarea
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Contoh: Kebutuhan buah 50kg/minggu (jeruk peras, lemon), PIC suka dihubungi sore."
+                placeholder="Contoh: PIC suka dihubungi sore hari via WA, pengiriman sebelum jam 9 pagi."
                 className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden resize-none"
               />
-            </div>
-
-            {/* Foto Usaha (Opsional - Section 12) */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1 flex items-center gap-1.5">
-                <Camera className="w-4 h-4 text-gray-500" />
-                Foto Usaha (Opsional)
-              </label>
-
-              {photoPreviewUrl ? (
-                <div className="relative inline-block mt-1">
-                  <img
-                    src={photoPreviewUrl}
-                    alt="Preview"
-                    className="w-32 h-32 object-cover rounded-2xl border border-gray-200 shadow-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={removeSelectedPhoto}
-                    className="absolute -top-2 -right-2 p-1 bg-rose-600 text-white rounded-full shadow-md hover:bg-rose-700 transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer bg-gray-50 hover:bg-emerald-50/50 transition">
-                  <UploadCloud className="w-6 h-6 text-gray-400 mb-1" />
-                  <span className="text-xs font-semibold text-gray-600">
-                    Pilih Foto dari Perangkat / Kamera
-                  </span>
-                  <span className="text-[10px] text-gray-400 mt-0.5">JPG, PNG atau WebP</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handlePhotoSelect}
-                    className="hidden"
-                  />
-                </label>
-              )}
             </div>
           </div>
 
