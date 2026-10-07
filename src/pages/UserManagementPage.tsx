@@ -179,6 +179,8 @@ export const UserManagementPage: React.FC = () => {
         return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'Sales':
         return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'Kurir':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
@@ -191,14 +193,14 @@ export const UserManagementPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">
-              User Management (Khusus Owner)
+              User
             </h1>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
               {profiles.length} Akun
             </span>
           </div>
           <p className="text-[11px] text-gray-500 mt-0.5">
-            Tambah, edit data, ubah role (Owner, Manager, Sales), aktifkan atau nonaktifkan akun pengguna internal.
+            Pengelolaan akun tim, peran akses (Owner, Manager, Sales, Kurir), dan kredensial sistem.
           </p>
         </div>
 
@@ -368,9 +370,10 @@ export const UserManagementPage: React.FC = () => {
                   onChange={(e) => setRole(e.target.value as UserRole)}
                   className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden font-semibold"
                 >
-                  <option value="Sales">Sales (Melihat prospect miliknya & input prospect)</option>
-                  <option value="Manager">Manager (Mengelola Prospect, Zone, Jenis Usaha)</option>
-                  <option value="Owner">Owner (Akses Penuh termasuk User Management)</option>
+                  <option value="Sales">Sales (Melihat prospek & pesanan miliknya, bisa juga antar pesanan)</option>
+                  <option value="Manager">Manager (Mengelola Prospek, Pesanan, Zone, Jenis Usaha)</option>
+                  <option value="Owner">Owner (Akses Penuh termasuk User Management & Keuangan)</option>
+                  <option value="Kurir">Kurir Khusus (Hanya melihat tugas pengantaran & konfirmasi selesai)</option>
                 </select>
               </div>
 

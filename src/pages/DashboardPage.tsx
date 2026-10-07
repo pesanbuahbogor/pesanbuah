@@ -19,6 +19,8 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronDown,
+  Truck,
+  Boxes,
 } from 'lucide-react';
 import { getSupabase, subscribeToRealtime } from '../lib/supabase';
 import { exportProspectsToCsv, exportProspectsToXls } from '../lib/exportUtils';
@@ -29,14 +31,18 @@ interface DashboardPageProps {
   onNavigateToProspects: (filterStatus?: ProspectStatus) => void;
   onOpenCreateProspect: () => void;
   onOpenSupabaseModal?: () => void;
+  onNavigateToOrders?: () => void;
+  onNavigateToInventory?: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToProspects,
   onOpenCreateProspect,
   onOpenSupabaseModal,
+  onNavigateToOrders,
+  onNavigateToInventory,
 }) => {
-  const { currentUser, isSales, isOwner } = useAuth();
+  const { currentUser, isSales, isOwner, isManager } = useAuth();
   const { success, error: toastError } = useToast();
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -158,14 +164,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-lg border border-gray-200/90 shadow-2xs">
         <div>
           <h1 className="text-sm sm:text-base font-bold text-gray-900 tracking-tight leading-snug">
-            Dashboard Calon Customer
+            Dashboard
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Halo, <span className="font-semibold text-emerald-700">{currentUser?.name}</span> ({currentUser?.role})
-            {isSales && ' · Memantau prospek yang ditugaskan kepada Anda.'}
+            {isSales && ' · Memantau CRM prospek dan operasional harian Anda.'}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center flex-wrap gap-1.5 w-full sm:w-auto justify-end">
           {/* Import CSV Button - Visible to Owner for quick database restore */}
           {isOwner && (
             <button
@@ -261,12 +267,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           )}
 
-          {/* Supabase Database Settings - Visible strictly to Owner only */}
+          {/* Supabase Database Settings - Visible strictly to Owner only on Desktop */}
           {isOwner && onOpenSupabaseModal && (
             <button
               onClick={onOpenSupabaseModal}
               title="Konfigurasi Database Supabase & Skrip SQL"
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border transition cursor-pointer ${
+              className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border transition cursor-pointer ${
                 isSupabaseConnected
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
                   : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
@@ -277,13 +283,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           )}
 
+          {/* Primary Action Button: Prospek Baru */}
           <button
             onClick={onOpenCreateProspect}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer flex-1 sm:flex-initial"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            + Calon Customer
+            + Prospek Baru
           </button>
+
+          {/* Quick shortcuts on larger screens only (on mobile they are directly in BottomNav) */}
+          {onNavigateToInventory && (isOwner || isManager) && (
+            <button
+              onClick={onNavigateToInventory}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              Inventory
+            </button>
+          )}
+
+          {onNavigateToOrders && (
+            <button
+              onClick={onNavigateToOrders}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
+            >
+              <Truck className="w-3.5 h-3.5" />
+              Order Delivery
+            </button>
+          )}
         </div>
       </div>
 

@@ -11,6 +11,10 @@ import {
   X,
   ChevronDown,
   Database,
+  ShoppingBag,
+  BarChart3,
+  Truck,
+  Boxes,
 } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -22,17 +26,23 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpenSupabaseModal }) => {
-  const { currentUser, logout, isOwner, isManager } = useAuth();
+  const { currentUser, logout, isOwner, isManager, isCourierOnly } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const isSupabaseConnected = !!getSupabase();
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, visible: true },
-    { id: 'prospects', label: 'Prospect (Calon Customer)', icon: Users, visible: true },
+  const primaryNavItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, visible: !isCourierOnly },
+    { id: 'prospects', label: 'CRM', icon: Users, visible: !isCourierOnly },
+    { id: 'inventory', label: 'Inventory', icon: Boxes, visible: isOwner || isManager },
+    { id: 'orders', label: isCourierOnly ? 'Delivery' : 'Order Delivery', icon: isCourierOnly ? Truck : ShoppingBag, visible: true },
+    { id: 'order_reports', label: 'Report', icon: BarChart3, visible: !isCourierOnly },
+  ].filter((item) => item.visible);
+
+  const secondaryNavItems = [
     { id: 'zones', label: 'Zone', icon: MapPin, visible: isOwner || isManager },
     { id: 'business_types', label: 'Jenis Usaha', icon: Tag, visible: isOwner || isManager },
-    { id: 'user_management', label: 'User Management', icon: ShieldCheck, visible: isOwner },
+    { id: 'user_management', label: 'User', icon: ShieldCheck, visible: isOwner },
   ].filter((item) => item.visible);
 
   const getRoleBadgeColor = (role?: string) => {
@@ -43,6 +53,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
         return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'Sales':
         return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'Kurir':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
@@ -67,36 +79,55 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
                   (e.currentTarget as HTMLElement).style.display = 'none';
                 }}
               />
-              <div>
-                <span className="font-extrabold text-base sm:text-lg tracking-tight text-gray-900 leading-tight">
-                  PesanBuah<span className="text-emerald-600">.id</span>
-                </span>
-                <span className="hidden sm:block text-[9px] font-semibold tracking-wider uppercase text-gray-400 -mt-0.5">
-                  Calon Customer
-                </span>
-              </div>
+              <span className="font-extrabold text-base sm:text-lg tracking-tight text-gray-900 leading-none">
+                PesanBuah<span className="text-emerald-600">.id</span>
+              </span>
             </div>
 
             {/* Desktop Navigation Links */}
-            <div className="hidden md:flex space-x-1">
-              {navItems.map((item) => {
+            <div className="hidden md:flex items-center space-x-1">
+              {primaryNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentTab === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => setCurrentTab(item.id)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/70'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />
-                    {item.label}
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
+
+              {secondaryNavItems.length > 0 && (
+                <>
+                  <div className="h-4 w-px bg-gray-200 mx-1.5" />
+                  {secondaryNavItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = currentTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setCurrentTab(item.id)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
             </div>
           </div>
 
@@ -241,27 +272,63 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
             </button>
           </div>
 
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setCurrentTab(item.id);
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-left transition cursor-pointer ${
-                  isActive
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />
-                {item.label}
-              </button>
-            );
-          })}
+          {/* Primary Mobile Items */}
+          <div className="space-y-1">
+            <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              Operasional
+            </div>
+            {primaryNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setCurrentTab(item.id);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-left transition cursor-pointer ${
+                    isActive
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Secondary Mobile Items */}
+          {secondaryNavItems.length > 0 && (
+            <div className="pt-2 border-t border-gray-100 space-y-1">
+              <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                Pengaturan
+              </div>
+              {secondaryNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCurrentTab(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-left transition cursor-pointer ${
+                      isActive
+                        ? 'bg-slate-900 text-white font-bold'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </nav>

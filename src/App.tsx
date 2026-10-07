@@ -5,6 +5,9 @@ import { Navbar } from './components/Navbar';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProspectsPage } from './pages/ProspectsPage';
+import { OrdersPage } from './pages/OrdersPage';
+import { InventoryPage } from './pages/InventoryPage';
+import { OrderReportsPage } from './pages/OrderReportsPage';
 import { ZonesPage } from './pages/ZonesPage';
 import { BusinessTypesPage } from './pages/BusinessTypesPage';
 import { UserManagementPage } from './pages/UserManagementPage';
@@ -15,13 +18,27 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { ProspectStatus } from './types';
 import { db } from './lib/db';
 import { Loader2 } from 'lucide-react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
-  const { currentUser, isLoading, isOwner, isManager } = useAuth();
+  const { currentUser, isLoading, isOwner, isManager, isCourierOnly } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [initialStatusFilter, setInitialStatusFilter] = useState<ProspectStatus | undefined>(undefined);
   const [isCreateOpenInitially, setIsCreateOpenInitially] = useState(false);
+  const [orderInitialMode, setOrderInitialMode] = useState<'orders' | 'remittance'>('orders');
+
+  const handleNavigateToOrdersRemittance = () => {
+    setOrderInitialMode('remittance');
+    setCurrentTab('orders');
+  };
+
+  // If user is pure Kurir, default to 'orders' tab
+  React.useEffect(() => {
+    if (isCourierOnly && currentTab === 'dashboard') {
+      setCurrentTab('orders');
+    }
+  }, [isCourierOnly]);
 
   // Auto-sync initial master data and prospects to Supabase in background whenever app starts
   React.useEffect(() => {
@@ -68,6 +85,7 @@ const AppContent: React.FC = () => {
         setCurrentTab={(tab) => {
           setInitialStatusFilter(undefined);
           setIsCreateOpenInitially(false);
+          if (tab !== 'orders') setOrderInitialMode('orders');
           setCurrentTab(tab);
         }}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
@@ -80,15 +98,25 @@ const AppContent: React.FC = () => {
 
       {/* Main Page View */}
       <main className="flex-1 pb-16 sm:pb-8">
-        {currentTab === 'dashboard' && (
+        {currentTab === 'dashboard' && !isCourierOnly && (
           <DashboardPage
             onNavigateToProspects={handleNavigateToProspects}
             onOpenCreateProspect={handleOpenCreateProspect}
             onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+            onNavigateToOrders={() => setCurrentTab('orders')}
+            onNavigateToInventory={() => setCurrentTab('inventory')}
           />
         )}
 
-        {currentTab === 'prospects' && (
+        {currentTab === 'orders' && <OrdersPage initialPageMode={orderInitialMode} />}
+
+        {currentTab === 'inventory' && (isOwner || isManager) && (
+          <InventoryPage onNavigateToOrdersRemittance={handleNavigateToOrdersRemittance} />
+        )}
+
+        {currentTab === 'order_reports' && !isCourierOnly && <OrderReportsPage />}
+
+        {currentTab === 'prospects' && !isCourierOnly && (
           <ProspectsPage
             key={initialStatusFilter || 'all'}
             initialStatusFilter={initialStatusFilter}
@@ -109,6 +137,7 @@ const AppContent: React.FC = () => {
         setCurrentTab={(tab) => {
           setInitialStatusFilter(undefined);
           setIsCreateOpenInitially(false);
+          if (tab !== 'orders') setOrderInitialMode('orders');
           setCurrentTab(tab);
         }}
       />
@@ -119,7 +148,7 @@ const AppContent: React.FC = () => {
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-3 px-4 sm:px-6 text-center text-xs text-gray-400 mb-14 md:mb-0">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>&copy; {new Date().getFullYear()} PesanBuah.id &bull; Sistem Database Calon Customer</span>
+          <span>&copy; {new Date().getFullYear()} PesanBuah.id &bull; Operations &amp; CRM</span>
           <span>Akses Aktif: {currentUser.name} ({currentUser.role})</span>
         </div>
       </footer>
@@ -137,10 +166,12 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

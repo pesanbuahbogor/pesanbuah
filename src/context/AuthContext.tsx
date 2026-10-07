@@ -12,10 +12,15 @@ interface AuthContextType {
   isOwner: boolean;
   isManager: boolean;
   isSales: boolean;
+  isDedicatedCourier: boolean;
+  isCourierOnly: boolean;
+  canActAsCourier: boolean;
   canManageUsers: boolean;
   canManageZones: boolean;
   canManageBusinessTypes: boolean;
   canDeleteProspect: boolean;
+  canManageOrders: boolean;
+  canManageRemittance: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -138,15 +143,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isOwner = currentUser?.role === 'Owner';
   const isManager = currentUser?.role === 'Manager';
   const isSales = currentUser?.role === 'Sales';
+  const isDedicatedCourier = currentUser?.role === 'Kurir';
+
+  // Multi-role capability: Every user (Owner, Manager, Sales, or dedicated Kurir) can act as courier due to limited manpower,
+  // BUT a user with dedicated role 'Kurir' cannot access sales/manager/owner administrative areas.
+  const canActAsCourier = !!currentUser;
+  const isCourierOnly = currentUser?.role === 'Kurir';
 
   // Strict RBAC constraints:
   // - Only Owner can manage users
   // - Owner and Manager can manage zones and business types
   // - Owner and Manager can delete prospects
+  // - Pure Kurir cannot access prospect modifications, user management, or master zones
   const canManageUsers = isOwner;
   const canManageZones = isOwner || isManager;
   const canManageBusinessTypes = isOwner || isManager;
   const canDeleteProspect = isOwner || isManager;
+  const canManageOrders = !isCourierOnly; // Owner, Manager, Sales can create & manage all orders; Kurir focused on executing deliveries
+  // Strict Remittance Security: Hanya Owner dan Manager/Kasir yang berhak menerima setoran kas kurir dan membatalkan setoran.
+  // Role Sales dan Kurir dilarang keras menerima atau membatalkan uang kas fisik perusahaan demi keamanan finansial.
+  const canManageRemittance = isOwner || isManager;
 
   return (
     <AuthContext.Provider
@@ -159,10 +175,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isOwner,
         isManager,
         isSales,
+        isDedicatedCourier,
+        isCourierOnly,
+        canActAsCourier,
         canManageUsers,
         canManageZones,
         canManageBusinessTypes,
         canDeleteProspect,
+        canManageOrders,
+        canManageRemittance,
       }}
     >
       {children}

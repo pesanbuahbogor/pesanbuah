@@ -6,6 +6,10 @@ import {
   MapPin,
   Tag,
   ShieldCheck,
+  ShoppingBag,
+  Truck,
+  BarChart3,
+  Boxes,
 } from 'lucide-react';
 
 interface BottomNavProps {
@@ -14,14 +18,15 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab }) => {
-  const { isOwner, isManager } = useAuth();
+  const { isOwner, isManager, isCourierOnly } = useAuth();
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, visible: true },
-    { id: 'prospects', label: 'Prospek', icon: Users, visible: true },
-    { id: 'zones', label: 'Zone', icon: MapPin, visible: isOwner || isManager },
-    { id: 'business_types', label: 'Jenis Usaha', icon: Tag, visible: isOwner || isManager },
-    { id: 'user_management', label: 'User Staf', icon: ShieldCheck, visible: isOwner },
+    { id: 'dashboard', label: 'Home', icon: LayoutDashboard, visible: !isCourierOnly },
+    { id: 'prospects', label: 'CRM', icon: Users, visible: !isCourierOnly },
+    { id: 'inventory', label: 'Inventory', icon: Boxes, visible: isOwner || isManager },
+    { id: 'orders', label: isCourierOnly ? 'Delivery' : 'Order Delivery', icon: isCourierOnly ? Truck : ShoppingBag, visible: true },
+    { id: 'order_reports', label: 'Report', icon: BarChart3, visible: !isCourierOnly },
+    { id: 'user_management', label: 'User', icon: ShieldCheck, visible: isOwner },
   ].filter((item) => item.visible);
 
   return (

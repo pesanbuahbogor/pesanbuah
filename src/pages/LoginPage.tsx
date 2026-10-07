@@ -56,7 +56,7 @@ export const LoginPage: React.FC = () => {
           PesanBuah<span className="text-emerald-400">.id</span>
         </h2>
         <p className="mt-1 text-sm text-emerald-200/80 font-medium">
-          Aplikasi Internal Manajemen Calon Customer
+          Operations &amp; CRM Platform
         </p>
       </div>
 

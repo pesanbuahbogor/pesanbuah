@@ -1,6 +1,6 @@
 {
-  "name": "PesanBuah.id - Manajemen Calon Customer",
-  "description": "Aplikasi internal PesanBuah.id untuk mencatat, mengelola, mencari, dan memantau data calon customer (Prospect) secara cepat, akurat, dan terstruktur.",
+  "name": "Dark Store Management System",
+  "description": "Aplikasi internal PesanBuah.id - Dark Store Management System: manajemen prospek customer, stok gudang buah, pesanan order, dan pengantaran kurir terpadu.",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

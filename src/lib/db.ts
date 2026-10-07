@@ -8,6 +8,19 @@ import {
   DuplicateWarningInfo,
   UserRole,
   ProspectStatus,
+  Order,
+  OrderStatus,
+  OrderItem,
+  QuickFruitItem,
+  StockItem,
+  StockInbound,
+  CanvasTrip,
+  CanvasTripItem,
+  StockMovementLog,
+  MovementType,
+  DeliverySlot,
+  PaymentMethod,
+  PaymentStatus,
 } from '../types';
 import { getSupabase } from './supabase';
 
@@ -17,15 +30,231 @@ const STORAGE_ZONE_MEMBERS = 'pesanbuah_db_zone_members_v1';
 const STORAGE_BUSINESS_TYPES = 'pesanbuah_db_business_types_v1';
 const STORAGE_PROSPECTS = 'pesanbuah_db_prospects_v1';
 const STORAGE_PHOTOS = 'pesanbuah_db_photos_v1';
+const STORAGE_ORDERS = 'pesanbuah_db_orders_v1';
+const STORAGE_REMITTANCE_MAP = 'pesanbuah_db_remittance_map_v1';
+const STORAGE_QUICK_FRUITS = 'pesanbuah_db_quick_fruits_v1';
+const STORAGE_STOCK_ITEMS = 'pesanbuah_db_stock_items_v1';
+const STORAGE_STOCK_INBOUNDS = 'pesanbuah_db_stock_inbounds_v1';
+const STORAGE_CANVAS_TRIPS = 'pesanbuah_db_canvas_trips_v1';
+const STORAGE_STOCK_LOGS = 'pesanbuah_db_stock_logs_v1';
+
+export const DEFAULT_QUICK_FRUITS: QuickFruitItem[] = [
+  { id: 'qf-1', name: 'Jeruk Medan Manis', unit: 'kg', price: 28000, emoji: '🍊', is_active: true },
+  { id: 'qf-2', name: 'Jeruk Peras Segar', unit: 'kg', price: 18000, emoji: '🍊', is_active: true },
+  { id: 'qf-3', name: 'Pisang Cavendish Super', unit: 'dus', price: 185000, emoji: '🍌', is_active: true },
+  { id: 'qf-4', name: 'Lemon California Segar', unit: 'kg', price: 25000, emoji: '🍋', is_active: true },
+  { id: 'qf-5', name: 'Semangka Non Biji Merah', unit: 'kg', price: 9500, emoji: '🍉', is_active: true },
+  { id: 'qf-6', name: 'Melon Sky Rocket', unit: 'kg', price: 14000, emoji: '🍈', is_active: true },
+  { id: 'qf-7', name: 'Alpukat Mentega Super', unit: 'kg', price: 28000, emoji: '🥑', is_active: true },
+  { id: 'qf-8', name: 'Apel Fuji Segar', unit: 'kg', price: 35000, emoji: '🍎', is_active: true },
+];
+
+export const DEFAULT_STOCK_ITEMS: StockItem[] = [
+  {
+    id: 'stk-1',
+    fruit_name: 'Jeruk Medan Manis',
+    unit: 'kg',
+    current_stock: 120.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 20,
+    avg_cost_price: 22000,
+    latest_selling_price: 28000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-2',
+    fruit_name: 'Jeruk Peras Segar',
+    unit: 'kg',
+    current_stock: 85.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 15,
+    avg_cost_price: 14000,
+    latest_selling_price: 18000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-3',
+    fruit_name: 'Pisang Cavendish Super',
+    unit: 'dus',
+    current_stock: 25.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 5,
+    avg_cost_price: 150000,
+    latest_selling_price: 185000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-4',
+    fruit_name: 'Lemon California Segar',
+    unit: 'kg',
+    current_stock: 45.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 10,
+    avg_cost_price: 19000,
+    latest_selling_price: 25000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-5',
+    fruit_name: 'Semangka Non Biji Merah',
+    unit: 'kg',
+    current_stock: 180.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 30,
+    avg_cost_price: 7000,
+    latest_selling_price: 9500,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-6',
+    fruit_name: 'Melon Sky Rocket',
+    unit: 'kg',
+    current_stock: 90.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 15,
+    avg_cost_price: 10500,
+    latest_selling_price: 14000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-7',
+    fruit_name: 'Alpukat Mentega Super',
+    unit: 'kg',
+    current_stock: 60.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 10,
+    avg_cost_price: 21000,
+    latest_selling_price: 28000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+  {
+    id: 'stk-8',
+    fruit_name: 'Apel Fuji Segar',
+    unit: 'kg',
+    current_stock: 40.0,
+    canvas_allocated_stock: 0,
+    min_stock_alert: 10,
+    avg_cost_price: 28000,
+    latest_selling_price: 35000,
+    updated_at: '2026-10-04T08:00:00Z',
+  },
+];
+
+export const DEFAULT_STOCK_INBOUNDS: StockInbound[] = [
+  {
+    id: 'inb-001',
+    purchase_date: '2026-10-04',
+    fruit_name: 'Jeruk Medan Manis',
+    supplier_name: 'Pasar Induk Kramat Jati (Pak Haji Maman)',
+    buyer_id: 'usr-owner-001',
+    buyer_name: 'Budi Santoso',
+    gross_purchase_qty: 50.0,
+    purchase_price_per_unit: 22000,
+    total_purchase_amount: 1100000,
+    payment_method: 'Tunai',
+    payment_status: 'Lunas',
+    invoice_no: 'INV-KMJ-9921',
+    sorting_checked: true,
+    checked_by_id: 'usr-manager-002',
+    checked_by_name: 'Hendra Wijaya',
+    shrinkage_qty: 2.0,
+    surplus_qty: 0,
+    net_stocked_qty: 48.0,
+    quality_notes: 'Kondisi manis segar, 2 kg susut akibat busuk dan memar di dasar peti.',
+    created_at: '2026-10-04T06:30:00Z',
+    created_by: 'usr-owner-001',
+  },
+];
+
+export const DEFAULT_CANVAS_TRIPS: CanvasTrip[] = [
+  {
+    id: 'cnv-001',
+    trip_date: '2026-10-04',
+    courier_id: 'usr-courier-005',
+    courier_name: 'Dimas Kurniawan',
+    status: 'Selesai & Rekonsiliasi',
+    items: [
+      {
+        fruit_name: 'Jeruk Medan Manis',
+        unit: 'kg',
+        brought_qty: 10.0,
+        selling_price: 28000,
+        sold_qty: 2.0,
+        expected_cash: 56000,
+        returned_qty: 8.0,
+        shrinkage_qty: 0,
+      },
+    ],
+    total_expected_cash: 56000,
+    actual_cash_submitted: 56000,
+    cash_difference: 0,
+    notes: 'Keliling area Pajajaran & Baranangsiang. Laku 2 kg di Toko Roti, sisa 8 kg kembali utuh ke gudang.',
+    departed_at: '2026-10-04T08:00:00Z',
+    returned_at: '2026-10-04T12:30:00Z',
+    verified_by_name: 'Hendra Wijaya',
+    created_at: '2026-10-04T08:00:00Z',
+  },
+];
+
+export const DEFAULT_STOCK_LOGS: StockMovementLog[] = [
+  {
+    id: 'log-001',
+    timestamp: '2026-10-04T06:30:00Z',
+    fruit_name: 'Jeruk Medan Manis',
+    unit: 'kg',
+    type: 'KULAKAN_MASUK',
+    qty_change: 48.0,
+    stock_after: 120.0,
+    reference_id: 'inb-001',
+    reference_note: 'Kulakan Pasar Induk Kramat Jati (Beli 50kg, susut 2kg, bersih masuk 48kg)',
+    operator_name: 'Hendra Wijaya',
+  },
+  {
+    id: 'log-002',
+    timestamp: '2026-10-04T08:00:00Z',
+    fruit_name: 'Jeruk Medan Manis',
+    unit: 'kg',
+    type: 'CANVAS_BAWA',
+    qty_change: -10.0,
+    stock_after: 110.0,
+    reference_id: 'cnv-001',
+    reference_note: 'Dibawa kurir Dimas Kurniawan canvas keliling',
+    operator_name: 'Hendra Wijaya',
+  },
+  {
+    id: 'log-003',
+    timestamp: '2026-10-04T12:30:00Z',
+    fruit_name: 'Jeruk Medan Manis',
+    unit: 'kg',
+    type: 'CANVAS_RETURN',
+    qty_change: 8.0,
+    stock_after: 118.0,
+    reference_id: 'cnv-001',
+    reference_note: 'Sisa canvas Dimas Kurniawan kembali ke gudang (laku 2kg, kembali 8kg)',
+    operator_name: 'Hendra Wijaya',
+  },
+];
 
 // Default initial master data (used for offline fallback and for initial Supabase seeding if tables are empty)
 export const DEFAULT_PROFILES: Profile[] = [
   {
+    id: 'usr-owner-000',
+    name: 'Owner PesanBuah',
+    email: 'pesanbuahbogor@gmail.com',
+    phone: '081234567890',
+    role: 'Owner',
+    is_courier: true,
+    active: true,
+    created_at: '2026-01-01T08:00:00Z',
+    password: 'password123',
+  },
+  {
     id: 'usr-owner-001',
-    name: 'Budi Santoso',
+    name: 'Budi Santoso (Owner)',
     email: 'owner@pesanbuah.id',
     phone: '081234567890',
     role: 'Owner',
+    is_courier: true, // Can act as courier
     active: true,
     created_at: '2026-01-10T08:00:00Z',
     password: 'password123',
@@ -36,28 +265,42 @@ export const DEFAULT_PROFILES: Profile[] = [
     email: 'manager@pesanbuah.id',
     phone: '081298765432',
     role: 'Manager',
+    is_courier: true, // Can act as courier
     active: true,
     created_at: '2026-01-12T09:00:00Z',
     password: 'password123',
   },
   {
     id: 'usr-sales-003',
-    name: 'Rian Saputra',
-    email: 'rian@pesanbuah.id',
+    name: 'Qinoi',
+    email: 'qinoi@pesanbuah.id',
     phone: '081311223344',
     role: 'Sales',
+    is_courier: true, // Dual role: Sales & Kurir pengantaran
     active: true,
     created_at: '2026-01-15T10:00:00Z',
     password: 'password123',
   },
   {
     id: 'usr-sales-004',
-    name: 'Siti Aisyah',
-    email: 'siti@pesanbuah.id',
+    name: 'Fajri',
+    email: 'fajri@pesanbuah.id',
     phone: '081399887766',
     role: 'Sales',
+    is_courier: true, // Dual role: Sales & Kurir pengantaran
     active: true,
     created_at: '2026-01-20T11:00:00Z',
+    password: 'password123',
+  },
+  {
+    id: 'usr-kurir-005',
+    name: 'Dimas (Kurir Khusus)',
+    email: 'kurir@pesanbuah.id',
+    phone: '081255667788',
+    role: 'Kurir',
+    is_courier: true,
+    active: true,
+    created_at: '2026-02-01T08:00:00Z',
     password: 'password123',
   },
 ];
@@ -89,8 +332,27 @@ export const DEFAULT_BUSINESS_TYPES: BusinessType[] = [
 
 // Helper to seed localStorage ONLY if Supabase is not connected
 function initializeLocalStorageSeed() {
-  if (!localStorage.getItem(STORAGE_PROFILES)) {
+  const existingProfilesRaw = localStorage.getItem(STORAGE_PROFILES);
+  if (!existingProfilesRaw) {
     localStorage.setItem(STORAGE_PROFILES, JSON.stringify(DEFAULT_PROFILES));
+  } else {
+    // Merge any missing default profiles (e.g. pesanbuahbogor@gmail.com, Dimas kurir, Qinoi, Fajri)
+    try {
+      const existing: Profile[] = JSON.parse(existingProfilesRaw);
+      const existingEmails = new Set(existing.map((p) => p.email.toLowerCase()));
+      let updated = false;
+      for (const def of DEFAULT_PROFILES) {
+        if (!existingEmails.has(def.email.toLowerCase())) {
+          existing.push(def);
+          updated = true;
+        }
+      }
+      if (updated) {
+        localStorage.setItem(STORAGE_PROFILES, JSON.stringify(existing));
+      }
+    } catch {
+      localStorage.setItem(STORAGE_PROFILES, JSON.stringify(DEFAULT_PROFILES));
+    }
   }
   if (!localStorage.getItem(STORAGE_ZONES)) {
     localStorage.setItem(STORAGE_ZONES, JSON.stringify(DEFAULT_ZONES));
@@ -106,6 +368,110 @@ function initializeLocalStorageSeed() {
   }
   if (!localStorage.getItem(STORAGE_PHOTOS)) {
     localStorage.setItem(STORAGE_PHOTOS, JSON.stringify([]));
+  }
+  if (!localStorage.getItem(STORAGE_QUICK_FRUITS)) {
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(DEFAULT_QUICK_FRUITS));
+  }
+  if (!localStorage.getItem(STORAGE_STOCK_ITEMS)) {
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(DEFAULT_STOCK_ITEMS));
+  }
+  if (!localStorage.getItem(STORAGE_STOCK_INBOUNDS)) {
+    localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(DEFAULT_STOCK_INBOUNDS));
+  }
+  if (!localStorage.getItem(STORAGE_CANVAS_TRIPS)) {
+    localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(DEFAULT_CANVAS_TRIPS));
+  }
+  if (!localStorage.getItem(STORAGE_STOCK_LOGS)) {
+    localStorage.setItem(STORAGE_STOCK_LOGS, JSON.stringify(DEFAULT_STOCK_LOGS));
+  }
+  if (!localStorage.getItem(STORAGE_ORDERS)) {
+    const today = new Date().toISOString().slice(0, 10);
+    const demoOrders: Order[] = [
+      {
+        id: 'ord-001',
+        order_number: 'PB-20261002-101',
+        customer_name: 'Kopi Kenanga Pajajaran',
+        customer_phone: '081234567890',
+        delivery_address: 'Jl. Pajajaran No. 45, Bogor Tengah',
+        zone_id: 'zone-001',
+        latitude: -6.595038,
+        longitude: 106.807719,
+        order_items: [
+          { id: 'i1', item_name: 'Pisang Cavendish Super', quantity: 2, unit: 'dus', price: 185000, subtotal: 370000 },
+          { id: 'i2', item_name: 'Lemon California Segar', quantity: 5, unit: 'kg', price: 25000, subtotal: 125000 },
+        ],
+        items_summary: 'Pisang Cavendish Super (2 dus), Lemon California Segar (5 kg)',
+        total_amount: 495000,
+        payment_method: 'Tunai',
+        payment_status: 'Belum Lunas',
+        status: 'Disiapkan',
+        delivery_slot: '14:00 - 16:00',
+        delivery_date: today,
+        courier_id: 'usr-sales-003', // Assigned to Qinoi
+        courier_name: 'Qinoi',
+        customer_notes: 'Titipkan di kasir Mas Ari, mohon buah diperiksa kematangannya.',
+        created_by: 'usr-owner-001',
+        created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: 'ord-002',
+        order_number: 'PB-20261002-102',
+        customer_name: 'Resto Sunda Baranangsiang',
+        customer_phone: '081388776655',
+        delivery_address: 'Jl. Riau No. 12, Bogor Timur',
+        zone_id: 'zone-002',
+        latitude: -6.606240,
+        longitude: 106.814230,
+        order_items: [
+          { id: 'i3', item_name: 'Semangka Non Biji Merah', quantity: 30, unit: 'kg', price: 9500, subtotal: 285000 },
+          { id: 'i4', item_name: 'Melon Sky Rocket', quantity: 20, unit: 'kg', price: 14000, subtotal: 280000 },
+        ],
+        items_summary: 'Semangka Non Biji Merah (30 kg), Melon Sky Rocket (20 kg)',
+        total_amount: 565000,
+        payment_method: 'QRIS',
+        payment_status: 'Lunas',
+        status: 'Sedang Diantar',
+        delivery_slot: '14:00 - 16:00',
+        delivery_date: today,
+        courier_id: 'usr-sales-004', // Assigned to Fajri
+        courier_name: 'Fajri',
+        customer_notes: 'Masuk lewat pintu samping dapur penerimaan barang.',
+        created_by: 'usr-manager-002',
+        created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: 'ord-003',
+        order_number: 'PB-20261002-099',
+        customer_name: 'Juice Bar Sentul City',
+        customer_phone: '081911224455',
+        delivery_address: 'Ruko Sentul Niaga Blok B-5, Babakan Madang',
+        zone_id: 'zone-003',
+        latitude: -6.558312,
+        longitude: 106.862415,
+        order_items: [
+          { id: 'i5', item_name: 'Alpukat Mentega Super', quantity: 15, unit: 'kg', price: 28000, subtotal: 420000 },
+          { id: 'i6', item_name: 'Buah Naga Merah', quantity: 10, unit: 'kg', price: 18000, subtotal: 180000 },
+        ],
+        items_summary: 'Alpukat Mentega Super (15 kg), Buah Naga Merah (10 kg)',
+        total_amount: 600000,
+        payment_method: 'Tunai',
+        payment_status: 'Lunas',
+        status: 'Selesai',
+        delivery_slot: '08:00 - 10:00',
+        delivery_date: today,
+        courier_id: 'usr-kurir-005', // Assigned to Dimas
+        courier_name: 'Dimas (Kurir Khusus)',
+        customer_notes: 'Uang pas sudah diterima kasir.',
+        delivery_notes: 'Diterima oleh Mbak Maya, uang tunai Rp 600.000 sudah diserahkan.',
+        delivered_at: new Date(Date.now() - 3600000 * 5).toISOString(),
+        created_by: 'usr-owner-001',
+        created_at: new Date(Date.now() - 3600000 * 8).toISOString(),
+        updated_at: new Date(Date.now() - 3600000 * 5).toISOString(),
+      },
+    ];
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(demoOrders));
   }
 }
 
@@ -246,6 +612,18 @@ export const db = {
         }
       } else if (!remoteMembers || remoteMembers.length === 0) {
         await supabase.from('zone_members').upsert(DEFAULT_ZONE_MEMBERS, { onConflict: 'id' });
+      }
+
+      // 5. Check Quick Fruits Catalog in Supabase
+      const { data: remoteFruits, error: qfErr } = await supabase.from('quick_fruits').select('id').limit(1);
+      if (!qfErr && (!remoteFruits || remoteFruits.length === 0)) {
+        await supabase.from('quick_fruits').upsert(DEFAULT_QUICK_FRUITS, { onConflict: 'id' });
+      }
+
+      // 6. Check Stock Items in Supabase
+      const { data: remoteStocks, error: stkErr } = await supabase.from('stock_items').select('id').limit(1);
+      if (!stkErr && (!remoteStocks || remoteStocks.length === 0)) {
+        await supabase.from('stock_items').upsert(DEFAULT_STOCK_ITEMS, { onConflict: 'id' });
       }
     } catch (err) {
       console.warn('Initial Supabase master data check error:', err);
@@ -1332,6 +1710,1413 @@ export const db = {
     return true;
   },
 
+  // --------------------------------------------------------------------------
+  // COURIER REMITTANCE HELPER & STATE CACHE
+  // --------------------------------------------------------------------------
+  getRemittanceMap(): Record<string, { status: 'Belum Disetor (Ada di Kurir)' | 'Sudah Disetor ke Kas'; remitted_at?: string | null; remitted_by_name?: string | null }> {
+    try {
+      const raw = localStorage.getItem(STORAGE_REMITTANCE_MAP);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  },
+
+  setRemittanceRecord(
+    orderId: string,
+    status: 'Belum Disetor (Ada di Kurir)' | 'Sudah Disetor ke Kas',
+    remitted_at?: string | null,
+    remitted_by_name?: string | null
+  ) {
+    try {
+      const map = this.getRemittanceMap();
+      map[orderId] = {
+        status,
+        remitted_at: remitted_at || null,
+        remitted_by_name: remitted_by_name || null,
+      };
+      localStorage.setItem(STORAGE_REMITTANCE_MAP, JSON.stringify(map));
+    } catch (e) {
+      console.warn('Failed to save remittance record to local cache:', e);
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // ORDER & DELIVERY MANAGEMENT
+  // --------------------------------------------------------------------------
+  async getOrders(currentUser?: Profile | null, filterCourierId?: string): Promise<Order[]> {
+    const supabase = getSupabase();
+    if (supabase) {
+      let query = supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      // If user is pure Kurir, only show orders assigned to them
+      if (currentUser?.role === 'Kurir') {
+        query = query.eq('courier_id', currentUser.id);
+      } else if (filterCourierId) {
+        query = query.eq('courier_id', filterCourierId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.warn('Supabase getOrders error:', error);
+        // Fallback to local storage if table doesn't exist yet
+        return this.getLocalOrders(currentUser, filterCourierId);
+      }
+
+      const remittanceMap = this.getRemittanceMap();
+      const enrichedOrders = (data || []).map((o: any) => {
+        const cached = remittanceMap[o.id];
+        // Data dari Supabase adalah data utama (authoritative)
+        let remStatus = o.courier_remittance_status || cached?.status;
+        if (!remStatus) {
+          remStatus = (o.payment_method === 'Tunai' && o.status === 'Selesai')
+            ? 'Belum Disetor (Ada di Kurir)'
+            : 'Sudah Disetor ke Kas';
+        }
+        return {
+          ...o,
+          courier_remittance_status: remStatus,
+          courier_remitted_at: o.courier_remitted_at || cached?.remitted_at || null,
+          courier_remitted_by_name: o.courier_remitted_by_name || cached?.remitted_by_name || null,
+        } as Order;
+      });
+
+      // Synchronize back to local storage cache so offline & instant stats work
+      try {
+        localStorage.setItem(STORAGE_ORDERS, JSON.stringify(enrichedOrders));
+      } catch {}
+
+      return enrichedOrders;
+    }
+
+    return this.getLocalOrders(currentUser, filterCourierId);
+  },
+
+  getLocalOrders(currentUser?: Profile | null, filterCourierId?: string): Order[] {
+    const raw = localStorage.getItem(STORAGE_ORDERS);
+    let list: Order[] = raw ? JSON.parse(raw) : [];
+    const remittanceMap = this.getRemittanceMap();
+
+    // Auto-heal orders missing GPS coordinates from prospects or known coordinates
+    let hasHealed = false;
+    const rawProspects = localStorage.getItem(STORAGE_PROSPECTS);
+    let prospectsList: Prospect[] = [];
+    if (rawProspects) {
+      try {
+        prospectsList = JSON.parse(rawProspects);
+      } catch {}
+    }
+
+    list = list.map((o) => {
+      const cached = remittanceMap[o.id];
+      let remStatus = o.courier_remittance_status || cached?.status;
+      if (!remStatus) {
+        remStatus = (o.payment_method === 'Tunai' && o.status === 'Selesai')
+          ? 'Belum Disetor (Ada di Kurir)'
+          : 'Sudah Disetor ke Kas';
+      }
+
+      let lat = o.latitude;
+      let lng = o.longitude;
+
+      if ((!lat || !lng) && lat !== 0) {
+        // Try known demo coordinates first
+        if (o.id === 'ord-001' || o.order_number?.includes('101')) {
+          hasHealed = true;
+          lat = -6.595038;
+          lng = 106.807719;
+        } else if (o.id === 'ord-002' || o.order_number?.includes('102')) {
+          hasHealed = true;
+          lat = -6.606240;
+          lng = 106.814230;
+        } else if (o.id === 'ord-003' || o.order_number?.includes('099')) {
+          hasHealed = true;
+          lat = -6.558312;
+          lng = 106.862415;
+        } else {
+          // Try matching linked prospect
+          const matched = prospectsList.find(
+            (p) =>
+              (o.prospect_id && p.id === o.prospect_id) ||
+              (p.phone && o.customer_phone && p.phone.replace(/[^0-9]/g, '') === o.customer_phone.replace(/[^0-9]/g, '')) ||
+              p.business_name.toLowerCase().trim() === o.customer_name.toLowerCase().trim()
+          );
+          if (matched?.latitude && matched?.longitude) {
+            hasHealed = true;
+            lat = matched.latitude;
+            lng = matched.longitude;
+          }
+        }
+      }
+
+      return {
+        ...o,
+        latitude: lat,
+        longitude: lng,
+        courier_remittance_status: remStatus,
+        courier_remitted_at: cached?.remitted_at || o.courier_remitted_at || null,
+        courier_remitted_by_name: cached?.remitted_by_name || o.courier_remitted_by_name || null,
+      };
+    });
+
+    if (hasHealed) {
+      localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
+    }
+
+    if (currentUser?.role === 'Kurir') {
+      list = list.filter((o) => o.courier_id === currentUser.id);
+    } else if (filterCourierId) {
+      list = list.filter((o) => o.courier_id === filterCourierId);
+    }
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  },
+
+  async getOrderById(id: string): Promise<Order | null> {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabase.from('orders').select('*').eq('id', id).maybeSingle();
+      if (!error && data) {
+        const cached = this.getRemittanceMap()[id];
+        const remStatus = cached?.status || (data as any).courier_remittance_status || ((data as any).payment_method === 'Tunai' && (data as any).status === 'Selesai' ? 'Belum Disetor (Ada di Kurir)' : 'Sudah Disetor ke Kas');
+        return {
+          ...data,
+          courier_remittance_status: remStatus,
+          courier_remitted_at: cached?.remitted_at || (data as any).courier_remitted_at || null,
+          courier_remitted_by_name: cached?.remitted_by_name || (data as any).courier_remitted_by_name || null,
+        } as Order;
+      }
+    }
+    const raw = localStorage.getItem(STORAGE_ORDERS);
+    const list: Order[] = raw ? JSON.parse(raw) : [];
+    const found = list.find((o) => o.id === id);
+    if (found) {
+      const cached = this.getRemittanceMap()[id];
+      const remStatus = cached?.status || found.courier_remittance_status || (found.payment_method === 'Tunai' && found.status === 'Selesai' ? 'Belum Disetor (Ada di Kurir)' : 'Sudah Disetor ke Kas');
+      return {
+        ...found,
+        courier_remittance_status: remStatus,
+        courier_remitted_at: cached?.remitted_at || found.courier_remitted_at || null,
+        courier_remitted_by_name: cached?.remitted_by_name || found.courier_remitted_by_name || null,
+      };
+    }
+    return null;
+  },
+
+  async createOrder(
+    data: {
+      prospect_id?: string | null;
+      customer_name: string;
+      customer_phone: string;
+      delivery_address: string;
+      zone_id?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      order_items: OrderItem[];
+      items_summary?: string;
+      total_amount: number;
+      payment_method: PaymentMethod;
+      payment_status?: PaymentStatus;
+      status?: OrderStatus;
+      delivery_slot: DeliverySlot;
+      delivery_date: string;
+      courier_id?: string | null;
+      courier_name?: string | null;
+      customer_notes?: string | null;
+    },
+    currentUser: Profile
+  ): Promise<Order> {
+    if (!data.customer_name?.trim()) throw new Error('Nama customer / usaha wajib diisi.');
+    if (!data.customer_phone?.trim()) throw new Error('Nomor HP / WhatsApp pemesan wajib diisi.');
+    if (!data.delivery_address?.trim()) throw new Error('Alamat pengantaran wajib diisi.');
+
+    const now = new Date();
+    const dateCode = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const orderNumber = `PB-${dateCode}-${randomSuffix}`;
+
+    const itemsSummary =
+      data.items_summary?.trim() ||
+      (data.order_items && data.order_items.length > 0
+        ? data.order_items.map((i) => `${i.item_name} (${i.quantity} ${i.unit})`).join(', ')
+        : 'Pesanan Aneka Buah & Sayur');
+
+    let finalLat = data.latitude ?? null;
+    let finalLng = data.longitude ?? null;
+
+    if (finalLat === null || finalLng === null) {
+      if (data.prospect_id) {
+        const prospect = await this.getProspectById(data.prospect_id);
+        if (prospect?.latitude && prospect?.longitude) {
+          finalLat = prospect.latitude;
+          finalLng = prospect.longitude;
+        }
+      }
+      if (finalLat === null || finalLng === null) {
+        const rawProspects = localStorage.getItem(STORAGE_PROSPECTS);
+        if (rawProspects) {
+          try {
+            const plist: Prospect[] = JSON.parse(rawProspects);
+            const cleanPhone = data.customer_phone.replace(/[^0-9]/g, '');
+            const matched = plist.find(
+              (p) =>
+                (cleanPhone && p.phone && p.phone.replace(/[^0-9]/g, '') === cleanPhone) ||
+                p.business_name.toLowerCase().trim() === data.customer_name.toLowerCase().trim()
+            );
+            if (matched?.latitude && matched?.longitude) {
+              finalLat = matched.latitude;
+              finalLng = matched.longitude;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    const newOrder: Order = {
+      id: generateUniqueId('ord'),
+      order_number: orderNumber,
+      prospect_id: data.prospect_id || null,
+      customer_name: data.customer_name.trim(),
+      customer_phone: data.customer_phone.trim(),
+      delivery_address: data.delivery_address.trim(),
+      zone_id: data.zone_id || null,
+      latitude: finalLat,
+      longitude: finalLng,
+      order_items: data.order_items || [],
+      items_summary: itemsSummary,
+      total_amount: Number(data.total_amount) || 0,
+      payment_method: data.payment_method || 'Tunai',
+      payment_status: data.payment_status || 'Belum Lunas',
+      status: data.status || 'Diterima',
+      delivery_slot: data.delivery_slot,
+      delivery_date: data.delivery_date,
+      courier_id: data.courier_id || null,
+      courier_name: data.courier_name || null,
+      customer_notes: data.customer_notes?.trim() || null,
+      delivery_notes: null,
+      delivered_at: null,
+      proof_photo_url: null,
+      created_by: currentUser.id,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data: inserted, error } = await supabase
+        .from('orders')
+        .insert([newOrder])
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Supabase createOrder error, storing locally:', error);
+      } else if (inserted) {
+        return inserted as Order;
+      }
+    }
+
+    // Local Storage
+    const raw = localStorage.getItem(STORAGE_ORDERS);
+    const list: Order[] = raw ? JSON.parse(raw) : [];
+    list.unshift(newOrder);
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
+
+    // Deduct warehouse stock automatically from order items
+    this.deductStockForOrder(newOrder, currentUser);
+
+    return newOrder;
+  },
+
+  async updateOrder(
+    id: string,
+    updates: Partial<Order>,
+    currentUser: Profile
+  ): Promise<Order> {
+    const existing = await this.getOrderById(id);
+    if (!existing) throw new Error('Data order tidak ditemukan.');
+
+    const now = new Date().toISOString();
+    const updatedRecord: Order = {
+      ...existing,
+      ...updates,
+      updated_at: now,
+    };
+
+    // If status changed to 'Selesai', record delivered_at if not set
+    if (updates.status === 'Selesai' && !updatedRecord.delivered_at) {
+      updatedRecord.delivered_at = now;
+    }
+
+    // Persist remittance cache state if remittance field changed
+    if (updates.courier_remittance_status) {
+      this.setRemittanceRecord(
+        id,
+        updates.courier_remittance_status,
+        updatedRecord.courier_remitted_at,
+        updatedRecord.courier_remitted_by_name
+      );
+    }
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .update(updatedRecord)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          console.warn('Supabase updateOrder error, attempting fallback update without unmigrated columns:', error.message || error);
+          // If error is caused by missing columns in older Supabase schema (e.g. courier_remittance_status),
+          // retry update with base fields so status, delivered_at, delivery_notes, and payment_status are saved
+          const { courier_remittance_status, courier_remitted_at, courier_remitted_by_name, ...baseOrder } = updatedRecord;
+          const retryRes = await supabase
+            .from('orders')
+            .update(baseOrder)
+            .eq('id', id)
+            .select()
+            .single();
+          if (retryRes.error) {
+            console.warn('Supabase base order update error:', retryRes.error);
+          }
+        } else if (data) {
+          // If successful on Supabase, sync back to local storage
+          const raw = localStorage.getItem(STORAGE_ORDERS);
+          let list: Order[] = raw ? JSON.parse(raw) : [];
+          list = list.map((o) => (o.id === id ? { ...updatedRecord, ...(data as Order) } : o));
+          localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
+          return { ...updatedRecord, ...(data as Order) };
+        }
+      } catch (err) {
+        console.warn('Supabase updateOrder caught error:', err);
+      }
+    }
+
+    const raw = localStorage.getItem(STORAGE_ORDERS);
+    let list: Order[] = raw ? JSON.parse(raw) : [];
+    list = list.map((o) => (o.id === id ? updatedRecord : o));
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
+    return updatedRecord;
+  },
+
+  async assignCourier(
+    orderId: string,
+    courierId: string | null,
+    courierName: string | null,
+    currentUser: Profile
+  ): Promise<Order> {
+    return this.updateOrder(
+      orderId,
+      {
+        courier_id: courierId,
+        courier_name: courierName,
+        status: courierId ? 'Disiapkan' : 'Diterima',
+      },
+      currentUser
+    );
+  },
+
+  async reportDeliveryCompletion(
+    orderId: string,
+    data: {
+      delivery_notes?: string;
+      payment_status?: PaymentStatus;
+      proof_photo_url?: string;
+    },
+    currentUser: Profile
+  ): Promise<Order> {
+    const existing = await this.getOrderById(orderId);
+    const isCash = existing?.payment_method === 'Tunai' || !existing?.payment_method;
+    const now = new Date().toISOString();
+    const remittanceStatus = isCash ? 'Belum Disetor (Ada di Kurir)' : 'Sudah Disetor ke Kas';
+
+    this.setRemittanceRecord(
+      orderId,
+      remittanceStatus,
+      isCash ? null : now,
+      isCash ? null : 'Sistem (Non-Tunai)'
+    );
+
+    return this.updateOrder(
+      orderId,
+      {
+        status: 'Selesai',
+        delivered_at: now,
+        delivery_notes: data.delivery_notes || null,
+        payment_status: data.payment_status || 'Lunas',
+        proof_photo_url: data.proof_photo_url || null,
+        courier_remittance_status: remittanceStatus,
+        courier_remitted_at: isCash ? null : now,
+        courier_remitted_by_name: isCash ? null : 'Sistem (Non-Tunai)',
+      },
+      currentUser
+    );
+  },
+
+  async remitOrderPayment(
+    orderId: string,
+    currentUser: Profile
+  ): Promise<Order> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang berhak menerima uang setoran kurir ke kas perusahaan.');
+    }
+    const now = new Date().toISOString();
+    this.setRemittanceRecord(orderId, 'Sudah Disetor ke Kas', now, currentUser.name);
+
+    return this.updateOrder(
+      orderId,
+      {
+        courier_remittance_status: 'Sudah Disetor ke Kas',
+        courier_remitted_at: now,
+        courier_remitted_by_name: currentUser.name,
+      },
+      currentUser
+    );
+  },
+
+  async unremitOrderPayment(
+    orderId: string,
+    currentUser: Profile
+  ): Promise<Order> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang berhak membatalkan status uang setoran kas.');
+    }
+    this.setRemittanceRecord(orderId, 'Belum Disetor (Ada di Kurir)', null, null);
+
+    return this.updateOrder(
+      orderId,
+      {
+        courier_remittance_status: 'Belum Disetor (Ada di Kurir)',
+        courier_remitted_at: null,
+        courier_remitted_by_name: null,
+      },
+      currentUser
+    );
+  },
+
+  async remitCanvasTrip(
+    tripId: string,
+    currentUser: Profile
+  ): Promise<CanvasTrip> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang berhak menerima setoran kas canvas.');
+    }
+    const rawTrips = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    let trips: CanvasTrip[] = rawTrips ? JSON.parse(rawTrips) : [...DEFAULT_CANVAS_TRIPS];
+    const trip = trips.find((t) => t.id === tripId);
+    if (!trip) throw new Error('Data canvas keliling tidak ditemukan.');
+
+    const now = new Date().toISOString();
+    trip.remittance_status = 'Sudah Disetor ke Kas';
+    trip.remitted_at = now;
+    trip.remitted_by_name = currentUser.name;
+
+    localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(trips));
+    return trip;
+  },
+
+  async remitAllCourierCash(
+    courierId: string,
+    currentUser: Profile,
+    courierName?: string
+  ): Promise<{ ordersCount: number; canvasCount: number; totalAmount: number }> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang berhak menerima seluruh setoran kas kurir.');
+    }
+    const now = new Date().toISOString();
+    let totalAmount = 0;
+    let ordersCount = 0;
+    let canvasCount = 0;
+    const targetOrderIds: string[] = [];
+
+    // Remit orders
+    const rawOrders = localStorage.getItem(STORAGE_ORDERS);
+    let orders: Order[] = rawOrders ? JSON.parse(rawOrders) : [];
+    orders = orders.map((o) => {
+      const matchCourier =
+        o.courier_id === courierId ||
+        (courierName && o.courier_name && o.courier_name.trim().toLowerCase() === courierName.trim().toLowerCase());
+      if (
+        matchCourier &&
+        o.status === 'Selesai' &&
+        o.payment_method === 'Tunai' &&
+        o.courier_remittance_status !== 'Sudah Disetor ke Kas'
+      ) {
+        totalAmount += Number(o.total_amount) || 0;
+        ordersCount += 1;
+        targetOrderIds.push(o.id);
+        this.setRemittanceRecord(o.id, 'Sudah Disetor ke Kas', now, currentUser.name);
+        return {
+          ...o,
+          courier_remittance_status: 'Sudah Disetor ke Kas' as const,
+          courier_remitted_at: now,
+          courier_remitted_by_name: currentUser.name,
+          updated_at: now,
+        };
+      }
+      return o;
+    });
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(orders));
+
+    // Also update in Supabase if configured
+    const supabase = getSupabase();
+    if (supabase && targetOrderIds.length > 0) {
+      try {
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            courier_remittance_status: 'Sudah Disetor ke Kas',
+            courier_remitted_at: now,
+            courier_remitted_by_name: currentUser.name,
+            updated_at: now,
+          })
+          .in('id', targetOrderIds);
+        if (error) {
+          console.warn('Supabase batch remittance update error (handled via local map):', error.message || error);
+        }
+      } catch (err) {
+        console.warn('Supabase batch remittance caught error:', err);
+      }
+    }
+
+    // Remit canvas trips
+    const rawTrips = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    let trips: CanvasTrip[] = rawTrips ? JSON.parse(rawTrips) : [...DEFAULT_CANVAS_TRIPS];
+    trips = trips.map((t) => {
+      const matchCourier =
+        t.courier_id === courierId ||
+        (courierName && t.courier_name && t.courier_name.trim().toLowerCase() === courierName.trim().toLowerCase());
+      if (
+        matchCourier &&
+        t.status === 'Selesai & Rekonsiliasi' &&
+        t.actual_cash_submitted > 0 &&
+        t.remittance_status !== 'Sudah Disetor ke Kas'
+      ) {
+        totalAmount += Number(t.actual_cash_submitted) || 0;
+        canvasCount += 1;
+        return {
+          ...t,
+          remittance_status: 'Sudah Disetor ke Kas' as const,
+          remitted_at: now,
+          remitted_by_name: currentUser.name,
+        };
+      }
+      return t;
+    });
+    localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(trips));
+
+    return { ordersCount, canvasCount, totalAmount };
+  },
+
+  async deleteOrder(id: string, currentUser: Profile): Promise<boolean> {
+    if (currentUser.role === 'Kurir') {
+      throw new Error('Akses Ditolak: Kurir tidak memiliki izin untuk menghapus order.');
+    }
+    const supabase = getSupabase();
+    if (supabase) {
+      await supabase.from('orders').delete().eq('id', id);
+    }
+    const raw = localStorage.getItem(STORAGE_ORDERS);
+    let list: Order[] = raw ? JSON.parse(raw) : [];
+    list = list.filter((o) => o.id !== id);
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
+    return true;
+  },
+
+  // ==========================================
+  // QUICK FRUITS / PRODUK CEPAT MASTER DATA
+  // ==========================================
+  async getQuickFruits(): Promise<QuickFruitItem[]> {
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('quick_fruits')
+          .select('*')
+          .order('name');
+        if (!error && data && data.length > 0) {
+          return data as QuickFruitItem[];
+        }
+      } catch {
+        // Fallback to local storage
+      }
+    }
+    const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(DEFAULT_QUICK_FRUITS));
+      return DEFAULT_QUICK_FRUITS;
+    }
+    try {
+      const parsed: QuickFruitItem[] = JSON.parse(raw);
+      return parsed;
+    } catch {
+      return DEFAULT_QUICK_FRUITS;
+    }
+  },
+
+  async createQuickFruit(
+    data: { name: string; unit: string; price: number; emoji?: string; is_active?: boolean },
+    currentUser: Profile
+  ): Promise<QuickFruitItem> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menambah daftar produk buah.');
+    }
+    const now = new Date().toISOString();
+    const newItem: QuickFruitItem = {
+      id: `qf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: data.name.trim(),
+      unit: data.unit ? data.unit.trim() : 'kg',
+      price: Math.max(0, Number(data.price) || 0),
+      emoji: data.emoji || '🍊',
+      is_active: data.is_active !== undefined ? data.is_active : true,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data: inserted, error } = await supabase
+          .from('quick_fruits')
+          .insert(newItem)
+          .select()
+          .single();
+        if (!error && inserted) {
+          const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+          const list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
+          list.push(inserted as QuickFruitItem);
+          localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+          return inserted as QuickFruitItem;
+        }
+      } catch {
+        // Fallback to local storage
+      }
+    }
+
+    const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+    const list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
+    list.push(newItem);
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+    return newItem;
+  },
+
+  async updateQuickFruit(
+    id: string,
+    updates: Partial<QuickFruitItem>,
+    currentUser: Profile
+  ): Promise<QuickFruitItem> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mengubah daftar produk buah.');
+    }
+    const now = new Date().toISOString();
+    const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+    let list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
+    const existing = list.find((item) => item.id === id);
+    if (!existing) throw new Error('Data buah tidak ditemukan.');
+
+    const updatedItem: QuickFruitItem = {
+      ...existing,
+      ...updates,
+      updated_at: now,
+    };
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('quick_fruits')
+          .update(updatedItem)
+          .eq('id', id)
+          .select()
+          .single();
+        if (!error && data) {
+          list = list.map((item) => (item.id === id ? (data as QuickFruitItem) : item));
+          localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+          return data as QuickFruitItem;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    list = list.map((item) => (item.id === id ? updatedItem : item));
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+    return updatedItem;
+  },
+
+  async deleteQuickFruit(id: string, currentUser: Profile): Promise<boolean> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus item buah.');
+    }
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('quick_fruits').delete().eq('id', id);
+      } catch {
+        // Fallback
+      }
+    }
+    const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+    let list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
+    list = list.filter((item) => item.id !== id);
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+    return true;
+  },
+
+  async resetQuickFruitsToDefault(currentUser: Profile): Promise<QuickFruitItem[]> {
+    if (currentUser.role !== 'Owner') {
+      throw new Error('Akses Ditolak: Hanya Owner yang dapat mereset daftar buah ke bawaan.');
+    }
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(DEFAULT_QUICK_FRUITS));
+    return DEFAULT_QUICK_FRUITS;
+  },
+
+  // ==========================================
+  // INVENTORY, SORTIR KULAKAN & CANVAS KURIR
+  // ==========================================
+  recordStockMovementInternal(movement: Omit<StockMovementLog, 'id' | 'timestamp'>): void {
+    try {
+      const now = new Date().toISOString();
+      const newLog: StockMovementLog = {
+        ...movement,
+        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: now,
+      };
+      const raw = localStorage.getItem(STORAGE_STOCK_LOGS);
+      const list: StockMovementLog[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_LOGS];
+      list.unshift(newLog);
+      localStorage.setItem(STORAGE_STOCK_LOGS, JSON.stringify(list));
+    } catch (err) {
+      console.warn('recordStockMovementInternal error:', err);
+    }
+  },
+
+  deductStockForOrder(order: Order, currentUser: Profile): void {
+    if (!order.order_items || order.order_items.length === 0) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+      let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
+      let updated = false;
+
+      for (const item of order.order_items) {
+        if (!item.item_name || !item.quantity) continue;
+        const targetName = item.item_name.toLowerCase().trim();
+        const matched = list.find(
+          (s) => s.fruit_name.toLowerCase().trim() === targetName || targetName.includes(s.fruit_name.toLowerCase().trim())
+        );
+
+        if (matched) {
+          matched.current_stock = Math.max(0, Number((matched.current_stock - item.quantity).toFixed(2)));
+          matched.updated_at = new Date().toISOString();
+          updated = true;
+
+          this.recordStockMovementInternal({
+            fruit_name: matched.fruit_name,
+            unit: matched.unit,
+            type: 'ORDER_KELUAR',
+            qty_change: -item.quantity,
+            stock_after: matched.current_stock,
+            reference_id: order.id,
+            reference_note: `Penjualan Order #${order.order_number} (${order.customer_name})`,
+            operator_name: currentUser.name,
+          });
+        }
+      }
+
+      if (updated) {
+        localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+      }
+    } catch (err) {
+      console.warn('deductStockForOrder error:', err);
+    }
+  },
+
+  async getStockItems(): Promise<StockItem[]> {
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('stock_items').select('*').order('fruit_name');
+        if (!error && data && data.length > 0) {
+          try {
+            localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(data));
+          } catch {}
+          return data as StockItem[];
+        }
+      } catch (err) {
+        console.warn('Supabase getStockItems error, falling back to local storage:', err);
+      }
+    }
+    const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(DEFAULT_STOCK_ITEMS));
+      return DEFAULT_STOCK_ITEMS;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return DEFAULT_STOCK_ITEMS;
+    }
+  },
+
+  async createStockItem(
+    data: {
+      fruit_name: string;
+      unit: string;
+      current_stock: number;
+      min_stock_alert?: number;
+      avg_cost_price?: number;
+      latest_selling_price?: number;
+      emoji?: string;
+    },
+    currentUser: Profile
+  ): Promise<StockItem> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menambah jenis buah baru.');
+    }
+    if (!data.fruit_name?.trim()) {
+      throw new Error('Nama buah wajib diisi.');
+    }
+    const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
+
+    const exists = list.some(
+      (s) => s.fruit_name.toLowerCase().trim() === data.fruit_name.toLowerCase().trim()
+    );
+    if (exists) {
+      throw new Error(`Buah "${data.fruit_name}" sudah ada dalam master stok.`);
+    }
+
+    const newItem: StockItem = {
+      id: generateUniqueId('stk'),
+      fruit_name: data.fruit_name.trim(),
+      unit: data.unit?.trim() || 'kg',
+      current_stock: Math.max(0, Number(data.current_stock) || 0),
+      canvas_allocated_stock: 0,
+      min_stock_alert: Number(data.min_stock_alert) || 10,
+      avg_cost_price: Number(data.avg_cost_price) || 0,
+      latest_selling_price: Number(data.latest_selling_price) || 0,
+      emoji: data.emoji || '🍊',
+      updated_at: new Date().toISOString(),
+    };
+
+    list.unshift(newItem);
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+
+    if (newItem.current_stock > 0) {
+      this.recordStockMovementInternal({
+        fruit_name: newItem.fruit_name,
+        unit: newItem.unit,
+        type: 'PENYESUAIAN',
+        qty_change: newItem.current_stock,
+        stock_after: newItem.current_stock,
+        reference_id: newItem.id,
+        reference_note: `Penambahan Master Buah Baru (Stok Awal: ${newItem.current_stock} ${newItem.unit})`,
+        operator_name: currentUser.name,
+      });
+    }
+
+    // Also auto-sync into quick fruits master so it is available for orders immediately
+    try {
+      const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+      let qfList: QuickFruitItem[] = qfRaw ? JSON.parse(qfRaw) : [...DEFAULT_QUICK_FRUITS];
+      if (!qfList.some((q) => q.name.toLowerCase().trim() === newItem.fruit_name.toLowerCase().trim())) {
+        qfList.push({
+          id: generateUniqueId('qf'),
+          name: newItem.fruit_name,
+          unit: newItem.unit,
+          price: newItem.latest_selling_price,
+          emoji: newItem.emoji,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
+      }
+    } catch {}
+
+    return newItem;
+  },
+
+  async deleteStockItem(id: string, currentUser: Profile): Promise<boolean> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus data buah.');
+    }
+    const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
+    const target = list.find((s) => s.id === id);
+    if (!target) throw new Error('Data stok buah tidak ditemukan.');
+
+    list = list.filter((s) => s.id !== id);
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+
+    // Also sync deletion to quick fruits
+    try {
+      const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+      if (qfRaw) {
+        let qfList: QuickFruitItem[] = JSON.parse(qfRaw);
+        qfList = qfList.filter(
+          (q) => q.name.toLowerCase().trim() !== target.fruit_name.toLowerCase().trim()
+        );
+        localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
+      }
+    } catch {}
+
+    this.recordStockMovementInternal({
+      fruit_name: target.fruit_name,
+      unit: target.unit,
+      type: 'PENYESUAIAN',
+      qty_change: -target.current_stock,
+      stock_after: 0,
+      reference_id: target.id,
+      reference_note: `Penghapusan Master Buah "${target.fruit_name}" oleh ${currentUser.name}`,
+      operator_name: currentUser.name,
+    });
+
+    return true;
+  },
+
+  async updateStockItem(
+    id: string,
+    updates: Partial<StockItem>,
+    currentUser: Profile
+  ): Promise<StockItem> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mengubah data stok.');
+    }
+    const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
+    const existing = list.find((s) => s.id === id);
+    if (!existing) throw new Error('Data stok tidak ditemukan.');
+
+    const updatedItem: StockItem = {
+      ...existing,
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    list = list.map((s) => (s.id === id ? updatedItem : s));
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+
+    // Also sync update to quick fruits
+    try {
+      const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+      if (qfRaw) {
+        let qfList: QuickFruitItem[] = JSON.parse(qfRaw);
+        let found = false;
+        qfList = qfList.map((q) => {
+          if (q.name.toLowerCase().trim() === existing.fruit_name.toLowerCase().trim()) {
+            found = true;
+            return {
+              ...q,
+              name: updatedItem.fruit_name,
+              unit: updatedItem.unit,
+              price: updatedItem.latest_selling_price,
+              emoji: updatedItem.emoji,
+              updated_at: new Date().toISOString(),
+            };
+          }
+          return q;
+        });
+        if (!found) {
+          qfList.push({
+            id: generateUniqueId('qf'),
+            name: updatedItem.fruit_name,
+            unit: updatedItem.unit,
+            price: updatedItem.latest_selling_price,
+            emoji: updatedItem.emoji,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+        localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
+      }
+    } catch {}
+
+    return updatedItem;
+  },
+
+  async clearAllFruitMaster(currentUser: Profile): Promise<boolean> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mengosongkan master buah.');
+    }
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify([]));
+    return true;
+  },
+
+  async resetStockItemsToDefault(currentUser: Profile): Promise<StockItem[]> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mereset master buah.');
+    }
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(DEFAULT_STOCK_ITEMS));
+    localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(DEFAULT_QUICK_FRUITS));
+    return DEFAULT_STOCK_ITEMS;
+  },
+
+  async adjustStockManually(
+    id: string,
+    newStock: number,
+    reason: string,
+    currentUser: Profile
+  ): Promise<StockItem> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat melakukan penyesuaian stok manual.');
+    }
+    const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
+    const existing = list.find((s) => s.id === id);
+    if (!existing) throw new Error('Data stok tidak ditemukan.');
+
+    const oldStock = existing.current_stock;
+    const diff = Number((newStock - oldStock).toFixed(2));
+    existing.current_stock = Math.max(0, newStock);
+    existing.updated_at = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+
+    this.recordStockMovementInternal({
+      fruit_name: existing.fruit_name,
+      unit: existing.unit,
+      type: 'PENYESUAIAN',
+      qty_change: diff,
+      stock_after: existing.current_stock,
+      reference_id: id,
+      reference_note: `Penyesuaian Manual / Opname: ${reason.trim()} (Sebelum: ${oldStock}, Sesudah: ${newStock})`,
+      operator_name: currentUser.name,
+    });
+
+    return existing;
+  },
+
+  async getStockMovementLogs(fruitName?: string): Promise<StockMovementLog[]> {
+    const raw = localStorage.getItem(STORAGE_STOCK_LOGS);
+    let list: StockMovementLog[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_LOGS];
+    if (fruitName && fruitName.trim()) {
+      const q = fruitName.toLowerCase().trim();
+      list = list.filter((l) => l.fruit_name.toLowerCase().includes(q));
+    }
+    return list;
+  },
+
+  // ------------------------------------------
+  // KULAKAN / BELANJA & SORTIR MASUK GUDANG
+  // ------------------------------------------
+  async getStockInbounds(): Promise<StockInbound[]> {
+    const raw = localStorage.getItem(STORAGE_STOCK_INBOUNDS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(DEFAULT_STOCK_INBOUNDS));
+      return DEFAULT_STOCK_INBOUNDS;
+    }
+    try {
+      const list: StockInbound[] = JSON.parse(raw);
+      return list.sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime());
+    } catch {
+      return DEFAULT_STOCK_INBOUNDS;
+    }
+  },
+
+  async createStockInbound(
+    data: Omit<StockInbound, 'id' | 'created_at' | 'created_by' | 'net_stocked_qty'>,
+    currentUser: Profile
+  ): Promise<StockInbound> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang memiliki hak akses mencatat belanja/kulakan gudang.');
+    }
+
+    const now = new Date().toISOString();
+    const gross = Math.max(0, Number(data.gross_purchase_qty) || 0);
+    const shrinkage = Math.max(0, Number(data.shrinkage_qty) || 0);
+    const surplus = Math.max(0, Number(data.surplus_qty) || 0);
+    const net = Math.max(0, Number((gross - shrinkage + surplus).toFixed(2)));
+
+    const pricePerUnit = Math.max(0, Number(data.purchase_price_per_unit) || 0);
+    const totalAmount = data.total_purchase_amount ? Number(data.total_purchase_amount) : gross * pricePerUnit;
+
+    const newInbound: StockInbound = {
+      ...data,
+      id: `inb-${Date.now().toString().slice(-6)}`,
+      gross_purchase_qty: gross,
+      shrinkage_qty: shrinkage,
+      surplus_qty: surplus,
+      net_stocked_qty: net,
+      purchase_price_per_unit: pricePerUnit,
+      total_purchase_amount: totalAmount,
+      created_by: currentUser.id,
+      created_at: now,
+    };
+
+    // Save inbound record
+    const rawInbounds = localStorage.getItem(STORAGE_STOCK_INBOUNDS);
+    const inbounds: StockInbound[] = rawInbounds ? JSON.parse(rawInbounds) : [...DEFAULT_STOCK_INBOUNDS];
+    inbounds.unshift(newInbound);
+    localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(inbounds));
+
+    // Increase current stock in warehouse and update avg cost price
+    const rawStock = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let stockList: StockItem[] = rawStock ? JSON.parse(rawStock) : [...DEFAULT_STOCK_ITEMS];
+    const targetName = data.fruit_name.toLowerCase().trim();
+    let stockItem = stockList.find((s) => s.fruit_name.toLowerCase().trim() === targetName);
+
+    if (!stockItem) {
+      stockItem = {
+        id: `stk-${Date.now()}`,
+        fruit_name: data.fruit_name.trim(),
+        unit: 'kg',
+        current_stock: net,
+        canvas_allocated_stock: 0,
+        min_stock_alert: 10,
+        avg_cost_price: pricePerUnit,
+        latest_selling_price: Math.round(pricePerUnit * 1.3),
+        updated_at: now,
+      };
+      stockList.push(stockItem);
+    } else {
+      const oldStock = stockItem.current_stock;
+      const oldCost = stockItem.avg_cost_price || pricePerUnit;
+      // Weighted average cost price
+      const totalUnits = oldStock + net;
+      if (totalUnits > 0 && pricePerUnit > 0) {
+        stockItem.avg_cost_price = Math.round((oldStock * oldCost + net * pricePerUnit) / totalUnits);
+      }
+      stockItem.current_stock = Number((oldStock + net).toFixed(2));
+      stockItem.updated_at = now;
+    }
+
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+
+    // Audit log
+    const notesSummary = shrinkage > 0 ? ` (Susut/Rusak: ${shrinkage}kg)` : '';
+    const surplusSummary = surplus > 0 ? ` (Lebih: +${surplus}kg)` : '';
+    this.recordStockMovementInternal({
+      fruit_name: stockItem.fruit_name,
+      unit: stockItem.unit,
+      type: 'KULAKAN_MASUK',
+      qty_change: net,
+      stock_after: stockItem.current_stock,
+      reference_id: newInbound.id,
+      reference_note: `Kulakan ${data.supplier_name} (Beli: ${gross}kg${notesSummary}${surplusSummary} -> Bersih Masuk: ${net}kg)`,
+      operator_name: data.buyer_name || currentUser.name,
+    });
+
+    return newInbound;
+  },
+
+  async deleteStockInbound(id: string, currentUser: Profile): Promise<boolean> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus data belanja.');
+    }
+    const raw = localStorage.getItem(STORAGE_STOCK_INBOUNDS);
+    let list: StockInbound[] = raw ? JSON.parse(raw) : [];
+    list = list.filter((i) => i.id !== id);
+    localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(list));
+    return true;
+  },
+
+  // ------------------------------------------
+  // ALUR KURIR CANVAS KELILING & REKONSILIASI
+  // ------------------------------------------
+  async getCanvasTrips(): Promise<CanvasTrip[]> {
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('canvas_trips').select('*').order('trip_date', { ascending: false });
+        if (!error && data && data.length > 0) {
+          try {
+            localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(data));
+          } catch {}
+          return data as CanvasTrip[];
+        }
+      } catch (err) {
+        console.warn('Supabase getCanvasTrips error, falling back to local storage:', err);
+      }
+    }
+    const raw = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(DEFAULT_CANVAS_TRIPS));
+      return DEFAULT_CANVAS_TRIPS;
+    }
+    try {
+      const list: CanvasTrip[] = JSON.parse(raw);
+      return list.sort((a, b) => new Date(b.trip_date).getTime() - new Date(a.trip_date).getTime());
+    } catch {
+      return DEFAULT_CANVAS_TRIPS;
+    }
+  },
+
+  async createCanvasTrip(
+    data: {
+      trip_date: string;
+      courier_id: string;
+      courier_name: string;
+      items: { fruit_name: string; unit: string; brought_qty: number; selling_price: number }[];
+      notes?: string;
+    },
+    currentUser: Profile
+  ): Promise<CanvasTrip> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menugaskan kurir canvas.');
+    }
+    const now = new Date().toISOString();
+    const tripItems: CanvasTripItem[] = data.items.map((i) => ({
+      fruit_name: i.fruit_name,
+      unit: i.unit || 'kg',
+      brought_qty: Math.max(0, Number(i.brought_qty) || 0),
+      selling_price: Math.max(0, Number(i.selling_price) || 0),
+      sold_qty: 0,
+      expected_cash: 0,
+      returned_qty: 0,
+      shrinkage_qty: 0,
+    }));
+
+    const newTrip: CanvasTrip = {
+      id: `cnv-${Date.now().toString().slice(-6)}`,
+      trip_date: data.trip_date,
+      courier_id: data.courier_id,
+      courier_name: data.courier_name,
+      status: 'Sedang Keliling',
+      items: tripItems,
+      total_expected_cash: 0,
+      actual_cash_submitted: 0,
+      cash_difference: 0,
+      notes: data.notes || '',
+      departed_at: now,
+      created_at: now,
+    };
+
+    // Save trip
+    const rawTrips = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    const trips: CanvasTrip[] = rawTrips ? JSON.parse(rawTrips) : [...DEFAULT_CANVAS_TRIPS];
+    trips.unshift(newTrip);
+    localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(trips));
+
+    // Allocate stock: deduct from current_stock, add to canvas_allocated_stock
+    const rawStock = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let stockList: StockItem[] = rawStock ? JSON.parse(rawStock) : [...DEFAULT_STOCK_ITEMS];
+
+    for (const item of tripItems) {
+      const targetName = item.fruit_name.toLowerCase().trim();
+      const stock = stockList.find((s) => s.fruit_name.toLowerCase().trim() === targetName);
+      if (stock) {
+        stock.current_stock = Math.max(0, Number((stock.current_stock - item.brought_qty).toFixed(2)));
+        stock.canvas_allocated_stock = Number((stock.canvas_allocated_stock + item.brought_qty).toFixed(2));
+        stock.updated_at = now;
+
+        this.recordStockMovementInternal({
+          fruit_name: stock.fruit_name,
+          unit: stock.unit,
+          type: 'CANVAS_BAWA',
+          qty_change: -item.brought_qty,
+          stock_after: stock.current_stock,
+          reference_id: newTrip.id,
+          reference_note: `Dibawa Kurir ${data.courier_name} canvas keliling lapangan`,
+          operator_name: currentUser.name,
+        });
+      }
+    }
+
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+    return newTrip;
+  },
+
+  async reconcileCanvasTrip(
+    id: string,
+    reconciliationData: {
+      items: CanvasTripItem[];
+      actual_cash_submitted: number;
+      notes?: string;
+      verified_by_name?: string;
+    },
+    currentUser: Profile
+  ): Promise<CanvasTrip> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat melakukan rekonsiliasi serah terima canvas.');
+    }
+    const rawTrips = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    let trips: CanvasTrip[] = rawTrips ? JSON.parse(rawTrips) : [...DEFAULT_CANVAS_TRIPS];
+    const trip = trips.find((t) => t.id === id);
+    if (!trip) throw new Error('Data canvas keliling tidak ditemukan.');
+
+    const now = new Date().toISOString();
+    let totalExpectedCash = 0;
+
+    const reconciledItems: CanvasTripItem[] = reconciliationData.items.map((i) => {
+      const sold = Math.max(0, Number(i.sold_qty) || 0);
+      const returned = Math.max(0, Number(i.returned_qty) || 0);
+      const shrinkage = Math.max(0, Number(i.shrinkage_qty) || 0);
+      const expected = sold * i.selling_price;
+      totalExpectedCash += expected;
+
+      return {
+        ...i,
+        sold_qty: sold,
+        returned_qty: returned,
+        shrinkage_qty: shrinkage,
+        expected_cash: expected,
+      };
+    });
+
+    const actualCash = Math.max(0, Number(reconciliationData.actual_cash_submitted) || 0);
+    const cashDiff = actualCash - totalExpectedCash;
+
+    trip.status = 'Selesai & Rekonsiliasi';
+    trip.items = reconciledItems;
+    trip.total_expected_cash = totalExpectedCash;
+    trip.actual_cash_submitted = actualCash;
+    trip.cash_difference = cashDiff;
+    trip.returned_at = now;
+    trip.verified_by_name = reconciliationData.verified_by_name || currentUser.name;
+    if (reconciliationData.notes) trip.notes = reconciliationData.notes;
+
+    localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(trips));
+
+    // Return stock back to warehouse
+    const rawStock = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    let stockList: StockItem[] = rawStock ? JSON.parse(rawStock) : [...DEFAULT_STOCK_ITEMS];
+
+    for (const item of reconciledItems) {
+      const targetName = item.fruit_name.toLowerCase().trim();
+      const stock = stockList.find((s) => s.fruit_name.toLowerCase().trim() === targetName);
+      if (stock) {
+        // Return unsold items back to available stock
+        stock.current_stock = Number((stock.current_stock + item.returned_qty).toFixed(2));
+        stock.canvas_allocated_stock = Math.max(0, Number((stock.canvas_allocated_stock - item.brought_qty).toFixed(2)));
+        stock.updated_at = now;
+
+        const shrinkNote = item.shrinkage_qty > 0 ? `, Rusak/Susut jalan: ${item.shrinkage_qty} ${item.unit}` : '';
+        this.recordStockMovementInternal({
+          fruit_name: stock.fruit_name,
+          unit: stock.unit,
+          type: 'CANVAS_RETURN',
+          qty_change: item.returned_qty,
+          stock_after: stock.current_stock,
+          reference_id: trip.id,
+          reference_note: `Sisa Canvas Kurir ${trip.courier_name} kembali ke gudang (Bawa: ${item.brought_qty}, Terjual: ${item.sold_qty}, Kembali: ${item.returned_qty}${shrinkNote})`,
+          operator_name: trip.verified_by_name || currentUser.name,
+        });
+      }
+    }
+
+    localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+    return trip;
+  },
+
+  async deleteCanvasTrip(id: string, currentUser: Profile): Promise<boolean> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus riwayat canvas.');
+    }
+    const raw = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    let list: CanvasTrip[] = raw ? JSON.parse(raw) : [];
+    list = list.filter((t) => t.id !== id);
+    localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(list));
+    return true;
+  },
+
   // Reset database back to default seed for testing in offline mode
   resetToInitialSeed() {
     localStorage.removeItem(STORAGE_PROFILES);
@@ -1340,6 +3125,12 @@ export const db = {
     localStorage.removeItem(STORAGE_BUSINESS_TYPES);
     localStorage.removeItem(STORAGE_PROSPECTS);
     localStorage.removeItem(STORAGE_PHOTOS);
+    localStorage.removeItem(STORAGE_ORDERS);
+    localStorage.removeItem(STORAGE_QUICK_FRUITS);
+    localStorage.removeItem(STORAGE_STOCK_ITEMS);
+    localStorage.removeItem(STORAGE_STOCK_INBOUNDS);
+    localStorage.removeItem(STORAGE_CANVAS_TRIPS);
+    localStorage.removeItem(STORAGE_STOCK_LOGS);
     initializeLocalStorageSeed();
   },
 };

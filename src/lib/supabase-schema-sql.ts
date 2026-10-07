@@ -1,68 +1,74 @@
-export const supabaseSetupSql = `-- ==============================================================================
--- PESANBUAH.ID - SUPABASE SCHEMA, RLS & REALTIME SETUP (RESILIENT VERSION)
--- Salin dan jalankan script ini di Supabase SQL Editor:
+// ==============================================================================
+// PESANBUAH.ID - MASTER DATABASE SCHEMA, RLS & PERMISSIONS (ALL-IN-ONE TERBAIK)
+// Skrip Tunggal Lengkap & Idempotent (Aman dijalankan pada database baru maupun lama)
+// ==============================================================================
+
+export const supabaseMasterSql = `-- ==============================================================================
+-- PESANBUAH.ID - MASTER DATABASE SCHEMA, RLS & REALTIME (1 SKRIP LENGKAP & TERBAIK)
+-- Salin dan jalankan skrip ini langsung di Supabase SQL Editor (1x Klik Run).
+-- Otomatis membuat/memperbarui seluruh tabel, kolom, izin akses (GRANT), dan data master.
 -- ==============================================================================
 
--- 1. Bersihkan tabel lama yang mungkin terlanjur dibuat dengan format UUID
-DROP TABLE IF EXISTS public.prospect_photos CASCADE;
-DROP TABLE IF EXISTS public.prospects CASCADE;
-DROP TABLE IF EXISTS public.zone_members CASCADE;
-DROP TABLE IF EXISTS public.business_types CASCADE;
-DROP TABLE IF EXISTS public.zones CASCADE;
-DROP TABLE IF EXISTS public.profiles CASCADE;
-
--- 2. Enable Extension
+-- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 3. Custom Enum Types
+-- 2. ENUM ROLE PENGGUNA (Jika sistem lama masih memakai ENUM)
 DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('Owner', 'Manager', 'Sales');
-EXCEPTION WHEN duplicate_object THEN null;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE user_role AS ENUM ('Owner', 'Manager', 'Sales', 'Kurir');
+    ELSE
+        BEGIN
+            ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'Kurir';
+        EXCEPTION WHEN duplicate_object THEN null;
+        END;
+    END IF;
 END $$;
 
-DO $$ BEGIN
-    CREATE TYPE prospect_status AS ENUM ('Prospect', 'Follow Up', 'Customer', 'Tidak Jadi');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
-
--- 4. Profiles (Staf Internal: Owner, Manager, Sales)
-CREATE TABLE public.profiles (
+-- 3. TABEL PROFILES (Pengguna Sistem: Owner, Manager, Sales, Kurir)
+CREATE TABLE IF NOT EXISTS public.profiles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     phone TEXT NOT NULL,
-    role user_role NOT NULL DEFAULT 'Sales',
+    role TEXT NOT NULL DEFAULT 'Sales',
+    is_courier BOOLEAN NOT NULL DEFAULT false,
     active BOOLEAN NOT NULL DEFAULT true,
     password TEXT DEFAULT 'password123',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5. Zones (Wilayah Operasional)
-CREATE TABLE public.zones (
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'Sales';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_courier BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS password TEXT DEFAULT 'password123';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+-- 4. TABEL ZONES (Wilayah Operasional Distribusi)
+CREATE TABLE IF NOT EXISTS public.zones (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. Zone Members (Pemetaan Sales ke Zone)
-CREATE TABLE public.zone_members (
+-- 5. TABEL ZONE MEMBERS (Pemetaan Sales / Kurir ke Wilayah)
+CREATE TABLE IF NOT EXISTS public.zone_members (
     id TEXT PRIMARY KEY,
     zone_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     CONSTRAINT unique_zone_user UNIQUE (zone_id, user_id)
 );
 
--- 7. Business Types (Jenis Usaha Target)
-CREATE TABLE public.business_types (
+-- 6. TABEL BUSINESS TYPES (Jenis Usaha Target Customer: Resto, Hotel, Kafe, dll)
+CREATE TABLE IF NOT EXISTS public.business_types (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 8. Prospects (Database Calon Customer)
-CREATE TABLE public.prospects (
+-- 7. TABEL PROSPECTS (Database Calon Customer & Pelanggan Buah)
+CREATE TABLE IF NOT EXISTS public.prospects (
     id TEXT PRIMARY KEY,
     business_name TEXT NOT NULL,
     pic_name TEXT NOT NULL,
@@ -74,168 +80,262 @@ CREATE TABLE public.prospects (
     gps_captured_at TIMESTAMPTZ,
     zone_id TEXT,
     sales_id TEXT,
-    status prospect_status NOT NULL DEFAULT 'Prospect',
+    status TEXT NOT NULL DEFAULT 'Prospect',
     notes TEXT,
-    potential_needs TEXT, -- Potensi kebutuhan tambahan customer (sayur, mie, santan, bumbu, buah dll untuk upselling)
+    potential_needs TEXT,
     created_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Tambahkan kolom jika tabel prospects sudah ada sebelumnya:
 ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS potential_needs TEXT;
+ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS gps_captured_at TIMESTAMPTZ;
+ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS zone_id TEXT;
+ALTER TABLE public.prospects ADD COLUMN IF NOT EXISTS sales_id TEXT;
 
--- 9. Prospect Photos
-CREATE TABLE public.prospect_photos (
+-- 8. TABEL PROSPECT PHOTOS (Dokumentasi Foto Kunjungan)
+CREATE TABLE IF NOT EXISTS public.prospect_photos (
     id TEXT PRIMARY KEY,
     prospect_id TEXT NOT NULL,
     file_url TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. Grant Hak Akses Penuh ke Role anon & authenticated (Wajib untuk mencegah 'permission denied')
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+-- 9. TABEL ORDERS (Transaksi Pesanan Buah, Jadwal Slot Antar & Remittance Kas)
+CREATE TABLE IF NOT EXISTS public.orders (
+    id TEXT PRIMARY KEY,
+    order_number TEXT NOT NULL UNIQUE,
+    prospect_id TEXT,
+    customer_name TEXT NOT NULL,
+    customer_phone TEXT NOT NULL,
+    delivery_address TEXT NOT NULL,
+    zone_id TEXT,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    order_items JSONB DEFAULT '[]'::jsonb,
+    items_summary TEXT NOT NULL,
+    total_amount NUMERIC NOT NULL DEFAULT 0,
+    payment_method TEXT NOT NULL DEFAULT 'Tunai',
+    payment_status TEXT NOT NULL DEFAULT 'Belum Lunas',
+    status TEXT NOT NULL DEFAULT 'Diterima',
+    delivery_slot TEXT NOT NULL DEFAULT 'Pagi (08:00 - 11:00)',
+    delivery_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    courier_id TEXT,
+    courier_name TEXT,
+    customer_notes TEXT,
+    delivery_notes TEXT,
+    delivered_at TIMESTAMPTZ,
+    proof_photo_url TEXT,
+    courier_remittance_status TEXT DEFAULT 'Belum Disetor (Ada di Kurir)',
+    courier_remitted_at TIMESTAMPTZ,
+    courier_remitted_by_name TEXT,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS order_items JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS courier_remittance_status TEXT DEFAULT 'Belum Disetor (Ada di Kurir)';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS courier_remitted_at TIMESTAMPTZ;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS courier_remitted_by_name TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_slot TEXT DEFAULT 'Pagi (08:00 - 11:00)';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS courier_id TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS courier_name TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS proof_photo_url TEXT;
 
--- Grant eksplisit setiap tabel
-GRANT ALL ON TABLE public.profiles TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.zones TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.zone_members TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.business_types TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.prospects TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.prospect_photos TO anon, authenticated, service_role;
+-- 10. TABEL QUICK FRUITS (Katalog Buah Cepat & Referensi Harga Jual)
+CREATE TABLE IF NOT EXISTS public.quick_fruits (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT 'kg',
+    price NUMERIC NOT NULL DEFAULT 0,
+    emoji TEXT DEFAULT '🍊',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- 11. Security Policies (Akses penuh untuk anon dan authenticated)
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.zone_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.business_types ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.prospects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.prospect_photos ENABLE ROW LEVEL SECURITY;
+-- 11. TABEL STOCK ITEMS (Gudang Stok Buah & Monitor Minimum Stok)
+CREATE TABLE IF NOT EXISTS public.stock_items (
+    id TEXT PRIMARY KEY,
+    fruit_name TEXT NOT NULL UNIQUE,
+    unit TEXT NOT NULL DEFAULT 'kg',
+    current_stock NUMERIC NOT NULL DEFAULT 0,
+    canvas_allocated_stock NUMERIC NOT NULL DEFAULT 0,
+    min_stock_alert NUMERIC NOT NULL DEFAULT 10,
+    avg_cost_price NUMERIC NOT NULL DEFAULT 0,
+    notes TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.profiles;
-CREATE POLICY "Allow all for anon and authenticated" ON public.profiles FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+-- 12. TABEL STOCK INBOUNDS (Riwayat Kulakan / Belanja Supplier)
+CREATE TABLE IF NOT EXISTS public.stock_inbounds (
+    id TEXT PRIMARY KEY,
+    fruit_name TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT 'kg',
+    quantity NUMERIC NOT NULL DEFAULT 0,
+    cost_price NUMERIC NOT NULL DEFAULT 0,
+    total_cost NUMERIC NOT NULL DEFAULT 0,
+    supplier_name TEXT,
+    notes TEXT,
+    received_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    recorded_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.zones;
-CREATE POLICY "Allow all for anon and authenticated" ON public.zones FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+-- 13. TABEL CANVAS TRIPS (Penugasan Kurir Canvas Keliling & Setoran Kas)
+CREATE TABLE IF NOT EXISTS public.canvas_trips (
+    id TEXT PRIMARY KEY,
+    courier_id TEXT NOT NULL,
+    courier_name TEXT NOT NULL,
+    vehicle_type TEXT DEFAULT 'Motor Roda Tiga',
+    vehicle_plate TEXT,
+    trip_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    status TEXT NOT NULL DEFAULT 'Sedang Keliling',
+    items JSONB DEFAULT '[]'::jsonb,
+    total_expected_cash NUMERIC NOT NULL DEFAULT 0,
+    actual_cash_submitted NUMERIC NOT NULL DEFAULT 0,
+    cash_difference NUMERIC NOT NULL DEFAULT 0,
+    notes TEXT,
+    settlement_notes TEXT,
+    verified_by_name TEXT,
+    remittance_status TEXT DEFAULT 'Belum Disetor (Ada di Kurir)',
+    remitted_at TIMESTAMPTZ,
+    remitted_by_name TEXT,
+    departed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.zone_members;
-CREATE POLICY "Allow all for anon and authenticated" ON public.zone_members FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS remittance_status TEXT DEFAULT 'Belum Disetor (Ada di Kurir)';
+ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS remitted_at TIMESTAMPTZ;
+ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS remitted_by_name TEXT;
 
-DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.business_types;
-CREATE POLICY "Allow all for anon and authenticated" ON public.business_types FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+-- 14. TABEL STOCK MOVEMENT LOGS (Audit Trail Mutasi Stok)
+CREATE TABLE IF NOT EXISTS public.stock_movement_logs (
+    id TEXT PRIMARY KEY,
+    fruit_name TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT 'kg',
+    type TEXT NOT NULL,
+    qty_change NUMERIC NOT NULL DEFAULT 0,
+    stock_after NUMERIC NOT NULL DEFAULT 0,
+    reference_id TEXT,
+    reference_note TEXT,
+    operator_name TEXT,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.prospects;
-CREATE POLICY "Allow all for anon and authenticated" ON public.prospects FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all for anon and authenticated" ON public.prospect_photos;
-CREATE POLICY "Allow all for anon and authenticated" ON public.prospect_photos FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
--- 12. Enable REALTIME Replication on All Tables (Aman dijalankan berulang kali)
-DO $$
-BEGIN
-    BEGIN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.prospects;
-    EXCEPTION WHEN duplicate_object THEN null;
-    END;
-    BEGIN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.zones;
-    EXCEPTION WHEN duplicate_object THEN null;
-    END;
-    BEGIN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.business_types;
-    EXCEPTION WHEN duplicate_object THEN null;
-    END;
-    BEGIN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
-    EXCEPTION WHEN duplicate_object THEN null;
-    END;
-    BEGIN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.prospect_photos;
-    EXCEPTION WHEN duplicate_object THEN null;
-    END;
-END $$;
-
--- 13. Full Replica Identity for Realtime Updates
-ALTER TABLE public.prospects REPLICA IDENTITY FULL;
-ALTER TABLE public.zones REPLICA IDENTITY FULL;
-ALTER TABLE public.business_types REPLICA IDENTITY FULL;
-ALTER TABLE public.profiles REPLICA IDENTITY FULL;
-ALTER TABLE public.prospect_photos REPLICA IDENTITY FULL;
-
--- 14. Seed Master Data Awal (Data Bawaan)
-INSERT INTO public.profiles (id, name, email, phone, role, active, password) VALUES
-    ('usr-owner-001', 'Budi Santoso', 'owner@pesanbuah.id', '081234567890', 'Owner', true, 'password123'),
-    ('usr-manager-002', 'Hendra Wijaya', 'manager@pesanbuah.id', '081298765432', 'Manager', true, 'password123'),
-    ('usr-sales-003', 'Rian Saputra', 'rian@pesanbuah.id', '081311223344', 'Sales', true, 'password123'),
-    ('usr-sales-004', 'Siti Aisyah', 'siti@pesanbuah.id', '081399887766', 'Sales', true, 'password123')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.zones (id, name, active) VALUES
-    ('zone-001', 'Zone 1 - Bogor Tengah & Pajajaran', true),
-    ('zone-002', 'Zone 2 - Bogor Timur & Baranangsiang', true),
-    ('zone-003', 'Zone 3 - Sentul & Babakan Madang', true),
-    ('zone-004', 'Zone 4 - Cibinong & Depok Selatan', true)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.business_types (id, name, active) VALUES
-    ('bt-001', 'Cafe & Coffee Shop', true),
-    ('bt-002', 'Restoran', true),
-    ('bt-003', 'Hotel & Resort', true),
-    ('bt-004', 'Juice Bar & Healthy Drink', true),
-    ('bt-005', 'Bakery & Pastry', true),
-    ('bt-006', 'Catering', true),
-    ('bt-007', 'Toko Buah / Retail', true),
-    ('bt-008', 'Lainnya', true)
-ON CONFLICT (id) DO NOTHING;
-`;
-
-export const supabaseQuickPermissionFixSql = `-- ==============================================================================
--- SOLUSI CEPAT: PERBAIKAN "PERMISSION DENIED FOR TABLE PROFILES"
--- Salin dan jalankan script ini di SQL Editor Supabase Anda untuk membuka izin:
 -- ==============================================================================
-
--- 1. Berikan hak akses skema public ke role anon dan authenticated
+-- 15. HAK AKSES LENGKAP & MENGATASI ERROR "PERMISSION DENIED 42501"
+-- ==============================================================================
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
 
--- 2. Pastikan tabel baru otomatis mendapatkan izin
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 
--- 3. Berikan hak akses eksplisit ke semua tabel aplikasi
-GRANT ALL ON TABLE public.profiles TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.zones TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.zone_members TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.business_types TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.prospects TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.prospect_photos TO anon, authenticated, service_role;
-
--- 4. Buka Row Level Security agar tidak memblokir query API
+-- Nonaktifkan RLS agar akses query melalui Anon Key tidak diblokir izin kode 42501
 ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zones DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zone_members DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.business_types DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prospects DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prospect_photos DISABLE ROW LEVEL SECURITY;
-`;
+ALTER TABLE public.orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quick_fruits DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_inbounds DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.canvas_trips DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_movement_logs DISABLE ROW LEVEL SECURITY;
 
-export const supabaseAddPotentialNeedsSql = `-- ==============================================================================
--- UPDATE SKEMA: TAMBAH KOLOM POTENSI KEBUTUHAN TAMBAHAN (UPSELLING)
--- Jalankan script ini jika tabel prospects Anda sudah ada di Supabase:
 -- ==============================================================================
+-- 16. SINKRONISASI REALTIME KE SEMUA CLIENT / PERANGKAT
+-- ==============================================================================
+DO $$ BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE 
+        public.profiles,
+        public.zones,
+        public.business_types,
+        public.prospects,
+        public.orders,
+        public.quick_fruits,
+        public.stock_items,
+        public.canvas_trips;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+    WHEN undefined_object THEN null;
+END $$;
 
--- 1. Tambah kolom potential_needs jika belum ada
-ALTER TABLE public.prospects 
-ADD COLUMN IF NOT EXISTS potential_needs TEXT;
+ALTER TABLE public.profiles REPLICA IDENTITY FULL;
+ALTER TABLE public.prospects REPLICA IDENTITY FULL;
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
+ALTER TABLE public.quick_fruits REPLICA IDENTITY FULL;
+ALTER TABLE public.stock_items REPLICA IDENTITY FULL;
+ALTER TABLE public.canvas_trips REPLICA IDENTITY FULL;
 
--- 2. Pastikan hak akses tetap terbuka untuk role anon dan authenticated
-GRANT ALL ON TABLE public.prospects TO anon, authenticated, service_role;
+-- ==============================================================================
+-- 17. DATA MASTER BAWAAN (SEEDED HANYA JIKA BELUM ADA DATA)
+-- ==============================================================================
+INSERT INTO public.profiles (id, name, email, phone, role, is_courier, active, password) VALUES
+    ('usr-owner-000', 'Owner PesanBuah', 'pesanbuahbogor@gmail.com', '081234567890', 'Owner', true, true, 'password123'),
+    ('usr-owner-001', 'Budi Santoso (Owner)', 'owner@pesanbuah.id', '081234567890', 'Owner', true, true, 'password123'),
+    ('usr-manager-002', 'Hendra Wijaya', 'manager@pesanbuah.id', '081298765432', 'Manager', true, true, 'password123'),
+    ('usr-sales-003', 'Dimas Satria (Sales)', 'dimas@pesanbuah.id', '081311223344', 'Sales', false, true, 'password123'),
+    ('usr-courier-004', 'Dani Kurir (Logistik)', 'dani@pesanbuah.id', '081399887766', 'Kurir', true, true, 'password123')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.zones (id, name, active) VALUES
+    ('zone-001', 'Zone 1 - Bogor Tengah & Pajajaran', true),
+    ('zone-002', 'Zone 2 - Bogor Timur & Baranangsiang', true),
+    ('zone-003', 'Zone 3 - Sentul & Babakan Madang', true),
+    ('zone-004', 'Zone 4 - Cibinong & Depok Selatan', true),
+    ('zone-005', 'Zone 5 - Bogor Barat & Dramaga', true),
+    ('zone-006', 'Zone 6 - Tanah Sareal & Kedunghalang', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.business_types (id, name, active) VALUES
+    ('bt-001', 'Cafe & Coffee Shop', true),
+    ('bt-002', 'Restoran & Rumah Makan', true),
+    ('bt-003', 'Hotel & Resort', true),
+    ('bt-004', 'Juice Bar & Minuman Segar', true),
+    ('bt-005', 'Bakery & Pastry', true),
+    ('bt-006', 'Catering & Event', true),
+    ('bt-007', 'Toko Buah / Retailer', true),
+    ('bt-008', 'Pedagang Keliling / UMKM', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.quick_fruits (id, name, unit, price, emoji, is_active) VALUES
+    ('qf-1', 'Jeruk Medan Manis', 'kg', 28000, '🍊', true),
+    ('qf-2', 'Jeruk Peras Segar', 'kg', 18000, '🍊', true),
+    ('qf-3', 'Pisang Cavendish Super', 'dus', 185000, '🍌', true),
+    ('qf-4', 'Lemon California Segar', 'kg', 25000, '🍋', true),
+    ('qf-5', 'Semangka Non Biji Merah', 'kg', 9500, '🍉', true),
+    ('qf-6', 'Melon Sky Rocket', 'kg', 14000, '🍈', true),
+    ('qf-7', 'Alpukat Mentega Super', 'kg', 28000, '🥑', true),
+    ('qf-8', 'Apel Fuji Segar', 'kg', 35000, '🍎', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.stock_items (id, fruit_name, unit, current_stock, canvas_allocated_stock, min_stock_alert, avg_cost_price, notes) VALUES
+    ('stk-1', 'Jeruk Medan Manis', 'kg', 120.0, 0, 20, 22000, 'Kondisi segar, grade A'),
+    ('stk-2', 'Jeruk Peras Segar', 'kg', 85.0, 0, 25, 13500, 'Kualitas peras tinggi'),
+    ('stk-3', 'Pisang Cavendish Super', 'dus', 15.0, 0, 5, 150000, 'Kemasan box standar 13kg'),
+    ('stk-4', 'Lemon California Segar', 'kg', 45.0, 0, 10, 19000, 'Asam segar, kulit mulus'),
+    ('stk-5', 'Semangka Non Biji Merah', 'kg', 210.0, 0, 40, 7000, 'Manis renyah, bobot 3-6kg'),
+    ('stk-6', 'Melon Sky Rocket', 'kg', 90.0, 0, 20, 10500, 'Aroma wangi'),
+    ('stk-7', 'Alpukat Mentega Super', 'kg', 60.0, 0, 15, 21000, 'Daging tebal gurih'),
+    ('stk-8', 'Apel Fuji Segar', 'kg', 40.0, 0, 10, 27000, 'Garing manis impor')
+ON CONFLICT (fruit_name) DO NOTHING;
 `;
+
+// Backwards compatibility aliases
+export const supabaseSetupSql = supabaseMasterSql;
+export const supabaseQuickPermissionFixSql = supabaseMasterSql;
+export const supabaseAddPotentialNeedsSql = supabaseMasterSql;
+
