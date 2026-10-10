@@ -171,7 +171,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             {isSales && ' · Memantau CRM prospek dan operasional harian Anda.'}
           </p>
         </div>
-        <div className="flex items-center flex-wrap gap-1.5 w-full sm:w-auto justify-end">
+        <div className="flex items-center flex-wrap gap-1.5 w-full sm:w-auto justify-start sm:justify-end">
           {/* Import CSV Button - Visible to Owner for quick database restore */}
           {isOwner && (
             <button
@@ -267,51 +267,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           )}
 
-          {/* Supabase Database Settings - Visible strictly to Owner only on Desktop */}
-          {isOwner && onOpenSupabaseModal && (
-            <button
-              onClick={onOpenSupabaseModal}
-              title="Konfigurasi Database Supabase & Skrip SQL"
-              className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border transition cursor-pointer ${
-                isSupabaseConnected
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
-              }`}
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isSupabaseConnected ? 'Supabase' : 'Setup Supabase'}</span>
-            </button>
-          )}
-
           {/* Primary Action Button: Prospek Baru */}
           <button
             onClick={onOpenCreateProspect}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer flex-1 sm:flex-initial"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            + Prospek Baru
+            <span>+ Prospek Baru</span>
           </button>
-
-          {/* Quick shortcuts on larger screens only (on mobile they are directly in BottomNav) */}
-          {onNavigateToInventory && (isOwner || isManager) && (
-            <button
-              onClick={onNavigateToInventory}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
-            >
-              <Boxes className="w-3.5 h-3.5" />
-              Inventory
-            </button>
-          )}
-
-          {onNavigateToOrders && (
-            <button
-              onClick={onNavigateToOrders}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
-            >
-              <Truck className="w-3.5 h-3.5" />
-              Order Delivery
-            </button>
-          )}
         </div>
       </div>
 
@@ -417,50 +380,86 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* Main Breakdown & Activity Grid: 3-column on lg for immediate glanceability without scrolling */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-        {/* Prospect per Sales */}
-        <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <div className="p-1 rounded bg-emerald-50 text-emerald-600">
-                  <Users className="w-3.5 h-3.5" />
+        {/* Prospect per Sales: Only for Owner / Manager */}
+        {(isOwner || isManager) ? (
+          <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1 rounded bg-emerald-50 text-emerald-600">
+                    <Users className="w-3.5 h-3.5" />
+                  </div>
+                  <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-tight">Prospect per Sales</h3>
                 </div>
-                <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-tight">Prospect per Sales</h3>
+                <span className="text-[10px] text-gray-400 font-medium">{salesProfiles.length} Tim</span>
               </div>
-              <span className="text-[10px] text-gray-400 font-medium">{salesProfiles.length} Tim</span>
+
+              <div className="space-y-2 mt-2">
+                {prospectPerSales.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-3 text-center">Belum ada data sales.</p>
+                ) : (
+                  prospectPerSales.map((item) => (
+                    <div key={item.id} className="space-y-0.5">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-gray-800 truncate text-[11px]">{item.name}</span>
+                        <span className="text-gray-500 font-mono text-[10px]">
+                          {item.count} ({item.percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${item.percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2 mt-2 max-h-[220px] overflow-y-auto pr-0.5">
-              {prospectPerSales.length === 0 ? (
-                <p className="text-xs text-gray-400 py-3 text-center">Belum ada data sales.</p>
-              ) : (
-                prospectPerSales.map((item) => (
-                  <div key={item.id} className="space-y-0.5">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-gray-800 truncate text-[11px]">{item.name}</span>
-                      <span className="text-gray-500 font-mono text-[10px]">
-                        {item.count} ({item.percentage}%)
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300"
-                        style={{ width: `${item.percentage}%` }}
-                      />
-                    </div>
+            {unassignedSalesCount > 0 && (
+              <div className="pt-1.5 mt-2 border-t border-gray-100 flex justify-between text-[11px] text-gray-400">
+                <span>Belum Diassign</span>
+                <span>{unassignedSalesCount} prospek</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="p-1 rounded bg-emerald-50 text-emerald-600">
+                    <Users className="w-3.5 h-3.5" />
                   </div>
-                ))
-              )}
+                  <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-tight">Ringkasan Prospek Saya</h3>
+                </div>
+                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">Sales Aktif</span>
+              </div>
+
+              <div className="space-y-2 mt-2 text-xs">
+                <div className="p-2 bg-emerald-50/70 rounded-xl border border-emerald-100 flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Customer Deal:</span>
+                  <span className="font-mono font-bold text-emerald-800 text-xs sm:text-sm">{customerCount}</span>
+                </div>
+                <div className="p-2 bg-amber-50/70 rounded-xl border border-amber-100 flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Follow Up:</span>
+                  <span className="font-mono font-bold text-amber-800 text-xs sm:text-sm">{followUpCount}</span>
+                </div>
+                <div className="p-2 bg-blue-50/70 rounded-xl border border-blue-100 flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Prospek Baru:</span>
+                  <span className="font-mono font-bold text-blue-800 text-xs sm:text-sm">{prospectCount}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-1.5 mt-2 border-t border-gray-100 flex justify-between text-[11px] text-gray-500 font-semibold">
+              <span>Total Prospek Saya:</span>
+              <span className="font-mono text-emerald-700">{totalCount} data</span>
             </div>
           </div>
-
-          {unassignedSalesCount > 0 && (
-            <div className="pt-1.5 mt-2 border-t border-gray-100 flex justify-between text-[11px] text-gray-400">
-              <span>Belum Diassign</span>
-              <span>{unassignedSalesCount} prospek</span>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Prospect per Zone */}
         <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col justify-between">
@@ -475,7 +474,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <span className="text-[10px] text-gray-400 font-medium">{zones.length} Zone</span>
             </div>
 
-            <div className="space-y-2 mt-2 max-h-[220px] overflow-y-auto pr-0.5">
+            <div className="space-y-2 mt-2">
               {prospectPerZone.length === 0 ? (
                 <p className="text-xs text-gray-400 py-3 text-center">Belum ada data Zone.</p>
               ) : (

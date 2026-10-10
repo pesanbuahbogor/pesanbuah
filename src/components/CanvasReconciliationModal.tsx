@@ -63,11 +63,41 @@ export const CanvasReconciliationModal: React.FC<CanvasReconciliationModalProps>
     setItems((prev) => {
       const next = [...prev];
       const target = { ...next[idx], [field]: Math.max(0, val) };
-      // auto adjust returned if sold changed
+      // auto adjust reciprocal field
       if (field === 'sold_qty') {
         const remaining = Math.max(0, target.brought_qty - target.sold_qty - target.shrinkage_qty);
         target.returned_qty = Number(remaining.toFixed(2));
+      } else if (field === 'returned_qty') {
+        const remaining = Math.max(0, target.brought_qty - target.returned_qty - target.shrinkage_qty);
+        target.sold_qty = Number(remaining.toFixed(2));
+      } else if (field === 'shrinkage_qty') {
+        const remaining = Math.max(0, target.brought_qty - target.sold_qty - target.shrinkage_qty);
+        target.returned_qty = Number(remaining.toFixed(2));
       }
+      next[idx] = target;
+      return next;
+    });
+  };
+
+  const setAllReturned = (idx: number) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const target = { ...next[idx] };
+      target.returned_qty = target.brought_qty;
+      target.sold_qty = 0;
+      target.shrinkage_qty = 0;
+      next[idx] = target;
+      return next;
+    });
+  };
+
+  const setAllSold = (idx: number) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const target = { ...next[idx] };
+      target.sold_qty = target.brought_qty;
+      target.returned_qty = 0;
+      target.shrinkage_qty = 0;
       next[idx] = target;
       return next;
     });
@@ -193,9 +223,27 @@ export const CanvasReconciliationModal: React.FC<CanvasReconciliationModalProps>
                     <span className="font-extrabold text-sm text-gray-900">
                       {item.fruit_name}
                     </span>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-200">
-                      Bawa Awal: {item.brought_qty} {item.unit} (@ {formatRupiah(item.selling_price)})
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-200">
+                        Bawa Awal: {item.brought_qty} {item.unit} (@ {formatRupiah(item.selling_price)})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAllReturned(idx)}
+                        className="text-[10px] px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded border border-blue-200 cursor-pointer"
+                        title="Tandai semua sisa kembali ke gudang (0 terjual)"
+                      >
+                        Semua Sisa Kembali
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAllSold(idx)}
+                        className="text-[10px] px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded border border-emerald-200 cursor-pointer"
+                        title="Tandai semua terjual habis (0 kembali)"
+                      >
+                        Semua Terjual
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -300,9 +348,18 @@ export const CanvasReconciliationModal: React.FC<CanvasReconciliationModalProps>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-emerald-950 mb-1">
-                  Uang Fisik / QRIS yang Disetor Kurir (Rp) *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-emerald-950">
+                    Uang Fisik / QRIS yang Disetor Kurir (Rp) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setActualCash(totalExpectedCash)}
+                    className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-300 hover:bg-emerald-100 cursor-pointer transition shadow-2xs"
+                  >
+                    Setor Pas (Rp {totalExpectedCash.toLocaleString('id-ID')})
+                  </button>
+                </div>
                 <input
                   type="number"
                   min="0"

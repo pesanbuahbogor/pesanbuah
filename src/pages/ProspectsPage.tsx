@@ -36,10 +36,12 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronDown,
+  Navigation,
 } from 'lucide-react';
 import { ProspectFormModal } from '../components/ProspectFormModal';
 import { ProspectDetailModal } from '../components/ProspectDetailModal';
 import { ProspectImportModal } from '../components/ProspectImportModal';
+import { CustomerLocationModal } from '../components/CustomerLocationModal';
 import { exportProspectsToCsv, exportProspectsToXls } from '../lib/exportUtils';
 
 interface ProspectsPageProps {
@@ -74,6 +76,7 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [deleteConfirmProspect, setDeleteConfirmProspect] = useState<Prospect | null>(null);
   const [isDeletingDirect, setIsDeletingDirect] = useState(false);
+  const [selectedProspectForLocation, setSelectedProspectForLocation] = useState<Prospect | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -298,7 +301,7 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 w-full sm:w-auto">
+        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 w-full sm:w-auto justify-start sm:justify-end">
           {/* Import CSV Button - Available to Owner and Manager for backup/restore & server migration */}
           {canDeleteProspect && (
             <button
@@ -416,7 +419,7 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
 
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex-1 sm:flex-initial"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>+ Tambah Prospek</span>
@@ -637,13 +640,22 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
                           {p.sales_id ? profileMap.get(p.sales_id) : 'Belum diassign'}
                         </td>
                         <td className="py-2.5 px-3">
-                          {hasGps ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <MapPin className="w-2.5 h-2.5" /> Ada GPS
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-gray-400 italic">-</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProspectForLocation(p);
+                            }}
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                              hasGps
+                                ? 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-300 shadow-2xs'
+                                : 'text-gray-600 bg-gray-50 hover:bg-gray-100 border-gray-200'
+                            }`}
+                            title="Buka Peta & Analisa Titik Sebelum Berangkat"
+                          >
+                            <MapPin className={`w-3 h-3 ${hasGps ? 'text-emerald-600' : 'text-gray-400'}`} />
+                            <span>{hasGps ? 'Analisa Titik' : 'Cek Peta'}</span>
+                          </button>
                         </td>
                         <td className="py-2.5 px-3">
                           <span
@@ -742,11 +754,22 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
                       Zone: {p.zone_id ? zoneMap.get(p.zone_id) : '-'}
                     </span>
                     <div className="flex items-center gap-2">
-                      {hasGps && (
-                        <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded-md">
-                          <MapPin className="w-2.5 h-2.5" /> GPS
-                        </span>
-                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProspectForLocation(p);
+                        }}
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                          hasGps
+                            ? 'text-emerald-800 bg-emerald-50 border-emerald-300'
+                            : 'text-gray-600 bg-gray-50 border-gray-200'
+                        }`}
+                        title="Buka Peta & Analisa Titik Sebelum Berangkat"
+                      >
+                        <MapPin className="w-2.5 h-2.5 text-emerald-600" />
+                        <span>{hasGps ? 'Analisa Titik' : 'Peta'}</span>
+                      </button>
                       {canDeleteProspect && (
                         <button
                           type="button"
@@ -854,6 +877,18 @@ export const ProspectsPage: React.FC<ProspectsPageProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Interactive Map Modal for Point Analysis */}
+      {selectedProspectForLocation && (
+        <CustomerLocationModal
+          isOpen={!!selectedProspectForLocation}
+          onClose={() => setSelectedProspectForLocation(null)}
+          prospect={selectedProspectForLocation}
+          onLocationUpdated={(updated) => {
+            loadAllData();
+            setSelectedProspectForLocation(updated);
+          }}
+        />
       )}
     </div>
   );

@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Settings,
   Navigation,
+  Lock,
 } from 'lucide-react';
 import { Order, OrderItem, QuickFruitItem, DeliverySlot, PaymentMethod, PaymentStatus, OrderStatus, Prospect, Profile, Zone } from '../types';
 import { calculateAutomaticDeliverySlot, formatRupiah, formatDateIso } from '../lib/orderScheduleUtils';
@@ -44,8 +45,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   zones,
   couriers,
 }) => {
-  const { currentUser, isOwner, isManager } = useAuth();
+  const { currentUser, isOwner, isManager, isSales } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
+  const isOrderLockedForSales = isSales && !!editOrder && (editOrder.status === 'Selesai' || editOrder.status === 'Dibatalkan');
 
   const [selectedProspectId, setSelectedProspectId] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
@@ -265,6 +267,10 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOrderLockedForSales) {
+      toastError('Transaksi yang sudah selesai terkunci dan tidak dapat diubah oleh Sales.');
+      return;
+    }
     if (!customerName.trim()) {
       toastError('Nama customer / usaha wajib diisi.');
       return;
@@ -341,6 +347,15 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {isOrderLockedForSales && (
+            <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center gap-2.5 text-xs text-amber-950 font-medium animate-in fade-in">
+              <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                <strong>Transaksi Selesai Terkunci:</strong> Pesanan #{editOrder?.order_number} telah berstatus <strong>{editOrder?.status}</strong>. Sesuai kebijakan keamanan data rahasia perusahaan, Sales tidak dapat mengubah pesanan yang sudah selesai.
+              </span>
+            </div>
+          )}
+          <fieldset disabled={isOrderLockedForSales} className="space-y-4">
           {/* Quick Prospect Match - Searchable Combobox */}
           <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2 relative">
             <div className="flex items-center justify-between">
@@ -1042,6 +1057,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden"
             />
           </div>
+          </fieldset>
 
           {/* Submit Buttons */}
           <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
@@ -1050,15 +1066,26 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
             >
-              Batal
+              {isOrderLockedForSales ? 'Tutup' : 'Batal'}
             </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
-            >
-              {isSubmitting ? 'Menyimpan Order...' : editOrder ? 'Perbarui Order' : 'Simpan Order & Terbitkan'}
-            </button>
+            {isOrderLockedForSales ? (
+              <button
+                type="button"
+                disabled
+                className="px-5 py-2.5 bg-gray-100 border border-gray-200 text-gray-400 text-xs font-bold rounded-xl cursor-not-allowed flex items-center gap-1.5"
+              >
+                <Lock className="w-3.5 h-3.5 text-gray-400" />
+                <span>Terkunci (Hanya-Baca)</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmitting ? 'Menyimpan Order...' : editOrder ? 'Perbarui Order' : 'Simpan Order & Terbitkan'}
+              </button>
+            )}
           </div>
         </form>
       </div>

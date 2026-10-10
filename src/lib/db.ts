@@ -1752,9 +1752,11 @@ export const db = {
         .select('*')
         .order('created_at', { ascending: false });
 
-      // If user is pure Kurir, only show orders assigned to them
-      if (currentUser?.role === 'Kurir') {
-        query = query.eq('courier_id', currentUser.id);
+      // Kurir query from Supabase: we load active orders and assigned orders
+      // In-memory filter handles strict role-based confidentiality below.
+      if (currentUser?.role === 'Sales') {
+        // Sales only receives their own orders (confidential)
+        query = query.eq('created_by', currentUser.id);
       } else if (filterCourierId) {
         query = query.eq('courier_id', filterCourierId);
       }
@@ -1784,12 +1786,37 @@ export const db = {
         } as Order;
       });
 
-      // Synchronize back to local storage cache so offline & instant stats work
-      try {
-        localStorage.setItem(STORAGE_ORDERS, JSON.stringify(enrichedOrders));
-      } catch {}
+      // Synchronize full list back to local storage cache only if Owner/Manager
+      if (!currentUser || currentUser.role === 'Owner' || currentUser.role === 'Manager') {
+        try {
+          localStorage.setItem(STORAGE_ORDERS, JSON.stringify(enrichedOrders));
+        } catch {}
+      }
 
-      return enrichedOrders;
+      let resultOrders = enrichedOrders;
+      if (currentUser?.role === 'Kurir') {
+        resultOrders = resultOrders.filter((o) => {
+          const isMyDelivery =
+            o.courier_id === currentUser.id ||
+            (o.courier_name && currentUser.name && o.courier_name.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+          if (isMyDelivery) return true;
+          // Kurir also needs to see active orders that are available to be handled/delivered
+          const isAvailableToHandle =
+            (!o.courier_id || o.courier_id === '') &&
+            (o.status === 'Diterima' || o.status === 'Disiapkan');
+          return isAvailableToHandle;
+        });
+      } else if (currentUser?.role === 'Sales') {
+        resultOrders = resultOrders.filter(
+          (o) =>
+            o.created_by === currentUser.id ||
+            (o.sales_rep && currentUser.name && o.sales_rep.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+        );
+      } else if (filterCourierId) {
+        resultOrders = resultOrders.filter((o) => o.courier_id === filterCourierId);
+      }
+
+      return resultOrders;
     }
 
     return this.getLocalOrders(currentUser, filterCourierId);
@@ -1862,12 +1889,28 @@ export const db = {
       };
     });
 
-    if (hasHealed) {
+    if (hasHealed && (!currentUser || currentUser.role === 'Owner' || currentUser.role === 'Manager')) {
       localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
     }
 
     if (currentUser?.role === 'Kurir') {
-      list = list.filter((o) => o.courier_id === currentUser.id);
+      list = list.filter((o) => {
+        const isMyDelivery =
+          o.courier_id === currentUser.id ||
+          (o.courier_name && currentUser.name && o.courier_name.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+        if (isMyDelivery) return true;
+        // Kurir also needs to see active orders that are available to be handled/delivered
+        const isAvailableToHandle =
+          (!o.courier_id || o.courier_id === '') &&
+          (o.status === 'Diterima' || o.status === 'Disiapkan');
+        return isAvailableToHandle;
+      });
+    } else if (currentUser?.role === 'Sales') {
+      list = list.filter(
+        (o) =>
+          o.created_by === currentUser.id ||
+          (o.sales_rep && currentUser.name && o.sales_rep.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      );
     } else if (filterCourierId) {
       list = list.filter((o) => o.courier_id === filterCourierId);
     }
@@ -1974,6 +2017,31 @@ export const db = {
       }
     }
 
+    // Strict pre-flight validation against available warehouse stock
+    if (data.order_items && data.order_items.length > 0) {
+      const stockList = await this.getStockItems();
+      for (const item of data.order_items) {
+        if (!item.item_name || !item.quantity) continue;
+        const targetName = item.item_name.toLowerCase().trim();
+        const matched = stockList.find(
+          (s) =>
+            s.fruit_name.toLowerCase().trim() === targetName ||
+            targetName.includes(s.fruit_name.toLowerCase().trim()) ||
+            s.fruit_name.toLowerCase().trim().includes(targetName)
+        );
+        if (matched) {
+          if (matched.current_stock <= 0) {
+            throw new Error(`Stok buah "${matched.fruit_name}" di gudang sudah habis (0 ${matched.unit}). Pesanan tidak dapat dibuat.`);
+          }
+          if (Number(item.quantity) > matched.current_stock) {
+            throw new Error(
+              `Stok buah "${matched.fruit_name}" di gudang hanya tersisa ${matched.current_stock} ${matched.unit}. Anda tidak dapat memesan ${item.quantity} ${matched.unit}.`
+            );
+          }
+        }
+      }
+    }
+
     const newOrder: Order = {
       id: generateUniqueId('ord'),
       order_number: orderNumber,
@@ -2004,30 +2072,83 @@ export const db = {
     };
 
     const supabase = getSupabase();
-    if (supabase) {
-      const { data: inserted, error } = await supabase
-        .from('orders')
-        .insert([newOrder])
-        .select()
-        .single();
+    let finalOrder: Order = newOrder;
 
-      if (error) {
-        console.warn('Supabase createOrder error, storing locally:', error);
-      } else if (inserted) {
-        return inserted as Order;
+    if (supabase) {
+      try {
+        const payload = this.cleanOrderPayloadForSupabase(newOrder);
+        const { data: inserted, error } = await supabase
+          .from('orders')
+          .insert([payload])
+          .select()
+          .single();
+
+        if (error) {
+          console.warn('Supabase createOrder error, storing locally:', error);
+        } else if (inserted) {
+          finalOrder = { ...newOrder, ...(inserted as Order) };
+        }
+      } catch (err) {
+        console.warn('Supabase createOrder caught error:', err);
       }
     }
 
     // Local Storage
     const raw = localStorage.getItem(STORAGE_ORDERS);
     const list: Order[] = raw ? JSON.parse(raw) : [];
-    list.unshift(newOrder);
+    list.unshift(finalOrder);
     localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
 
-    // Deduct warehouse stock automatically from order items
-    this.deductStockForOrder(newOrder, currentUser);
+    // Deduct warehouse stock automatically from order items (both in LocalStorage & Supabase!)
+    await this.deductStockForOrder(finalOrder, currentUser);
+    finalOrder.stock_deducted = true;
 
-    return newOrder;
+    // Update stock_deducted flag in local storage
+    const updatedList = list.map((o) => (o.id === finalOrder.id ? { ...o, stock_deducted: true } : o));
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(updatedList));
+
+    return finalOrder;
+  },
+
+  cleanOrderPayloadForSupabase(record: Partial<Order>): Record<string, any> {
+    const knownColumns = new Set([
+      'id',
+      'order_number',
+      'prospect_id',
+      'customer_name',
+      'customer_phone',
+      'delivery_address',
+      'zone_id',
+      'latitude',
+      'longitude',
+      'order_items',
+      'items_summary',
+      'total_amount',
+      'payment_method',
+      'payment_status',
+      'status',
+      'delivery_slot',
+      'delivery_date',
+      'courier_id',
+      'courier_name',
+      'customer_notes',
+      'delivery_notes',
+      'delivered_at',
+      'proof_photo_url',
+      'created_by',
+      'created_at',
+      'updated_at',
+      'courier_remittance_status',
+      'courier_remitted_at',
+      'courier_remitted_by_name',
+    ]);
+    const clean: Record<string, any> = {};
+    for (const [key, val] of Object.entries(record)) {
+      if (knownColumns.has(key)) {
+        clean[key] = val;
+      }
+    }
+    return clean;
   },
 
   async updateOrder(
@@ -2037,6 +2158,13 @@ export const db = {
   ): Promise<Order> {
     const existing = await this.getOrderById(id);
     if (!existing) throw new Error('Data order tidak ditemukan.');
+
+    // Strict access control: Sales is NOT allowed to edit completed or cancelled orders
+    if (currentUser.role === 'Sales') {
+      if (existing.status === 'Selesai' || existing.status === 'Dibatalkan') {
+        throw new Error('Akses Ditolak: Transaksi yang sudah selesai terkunci dan tidak dapat diubah oleh Sales.');
+      }
+    }
 
     const now = new Date().toISOString();
     const updatedRecord: Order = {
@@ -2048,6 +2176,21 @@ export const db = {
     // If status changed to 'Selesai', record delivered_at if not set
     if (updates.status === 'Selesai' && !updatedRecord.delivered_at) {
       updatedRecord.delivered_at = now;
+    }
+
+    // If order was not deducted yet and is now being prepared/shipped/delivered, deduct stock!
+    if (
+      !existing.stock_deducted &&
+      (updates.status === 'Disiapkan' || updates.status === 'Sedang Diantar' || updates.status === 'Selesai' || !updates.status)
+    ) {
+      await this.deductStockForOrder(updatedRecord, currentUser);
+      updatedRecord.stock_deducted = true;
+    }
+
+    // If order was cancelled and was previously deducted, restore stock back to warehouse!
+    if (updates.status === 'Dibatalkan' && existing.stock_deducted) {
+      await this.restoreStockForCancelledOrder(existing, currentUser);
+      updatedRecord.stock_deducted = false;
     }
 
     // Persist remittance cache state if remittance field changed
@@ -2063,9 +2206,10 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       try {
+        const payload = this.cleanOrderPayloadForSupabase(updatedRecord);
         const { data, error } = await supabase
           .from('orders')
-          .update(updatedRecord)
+          .update(payload)
           .eq('id', id)
           .select()
           .single();
@@ -2074,13 +2218,20 @@ export const db = {
           console.warn('Supabase updateOrder error, attempting fallback update without unmigrated columns:', error.message || error);
           // If error is caused by missing columns in older Supabase schema (e.g. courier_remittance_status),
           // retry update with base fields so status, delivered_at, delivery_notes, and payment_status are saved
-          const { courier_remittance_status, courier_remitted_at, courier_remitted_by_name, ...baseOrder } = updatedRecord;
+          const { courier_remittance_status, courier_remitted_at, courier_remitted_by_name, ...baseOrder } = payload;
           const retryRes = await supabase
             .from('orders')
             .update(baseOrder)
             .eq('id', id)
             .select()
             .single();
+          if (retryRes.data) {
+            const raw = localStorage.getItem(STORAGE_ORDERS);
+            let list: Order[] = raw ? JSON.parse(raw) : [];
+            list = list.map((o) => (o.id === id ? { ...updatedRecord, ...(retryRes.data as Order) } : o));
+            localStorage.setItem(STORAGE_ORDERS, JSON.stringify(list));
+            return { ...updatedRecord, ...(retryRes.data as Order) };
+          }
           if (retryRes.error) {
             console.warn('Supabase base order update error:', retryRes.error);
           }
@@ -2317,6 +2468,10 @@ export const db = {
     if (currentUser.role === 'Kurir') {
       throw new Error('Akses Ditolak: Kurir tidak memiliki izin untuk menghapus order.');
     }
+    const existing = await this.getOrderById(id);
+    if (existing?.stock_deducted) {
+      await this.restoreStockForCancelledOrder(existing, currentUser);
+    }
     const supabase = getSupabase();
     if (supabase) {
       await supabase.from('orders').delete().eq('id', id);
@@ -2339,8 +2494,31 @@ export const db = {
           .from('quick_fruits')
           .select('*')
           .order('name');
-        if (!error && data && data.length > 0) {
-          return data as QuickFruitItem[];
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const rawLocal = localStorage.getItem(STORAGE_QUICK_FRUITS);
+          const localList: QuickFruitItem[] = rawLocal ? JSON.parse(rawLocal) : [];
+          const localMapByName = new Map<string, QuickFruitItem>(localList.map((q) => [q.name.toLowerCase().trim(), q]));
+          const supaNames = new Set(data.map((d: any) => d.name.toLowerCase().trim()));
+
+          const combined = data.map((d: any) => {
+            const loc = localMapByName.get(d.name.toLowerCase().trim());
+            if (loc && loc.updated_at && (!d.updated_at || new Date(loc.updated_at).getTime() > new Date(d.updated_at).getTime())) {
+              return loc;
+            }
+            return d as QuickFruitItem;
+          });
+
+          for (const loc of localList) {
+            if (!supaNames.has(loc.name.toLowerCase().trim())) {
+              combined.push(loc);
+              supabase.from('quick_fruits').upsert([loc], { onConflict: 'name' }).then(() => {}, () => {});
+            }
+          }
+
+          try {
+            localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(combined));
+          } catch {}
+          return combined;
         }
       } catch {
         // Fallback to local storage
@@ -2381,17 +2559,13 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       try {
-        const { data: inserted, error } = await supabase
+        const { data: inserted } = await supabase
           .from('quick_fruits')
-          .insert(newItem)
+          .upsert([newItem], { onConflict: 'name' })
           .select()
           .single();
-        if (!error && inserted) {
-          const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
-          const list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
-          list.push(inserted as QuickFruitItem);
-          localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
-          return inserted as QuickFruitItem;
+        if (inserted) {
+          newItem.id = inserted.id;
         }
       } catch {
         // Fallback to local storage
@@ -2402,6 +2576,35 @@ export const db = {
     const list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
     list.push(newItem);
     localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+
+    // Also auto-sync/create in stock_items warehouse master!
+    try {
+      const stockRaw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+      let stockList: StockItem[] = stockRaw ? JSON.parse(stockRaw) : [...DEFAULT_STOCK_ITEMS];
+      const matchIndex = stockList.findIndex(
+        (s) => s.fruit_name.toLowerCase().trim() === data.name.toLowerCase().trim()
+      );
+      if (matchIndex === -1) {
+        const newStockItem: StockItem = {
+          id: generateUniqueId('stk'),
+          fruit_name: data.name.trim(),
+          unit: data.unit ? data.unit.trim() : 'kg',
+          current_stock: 0,
+          canvas_allocated_stock: 0,
+          min_stock_alert: 10,
+          avg_cost_price: 0,
+          latest_selling_price: Math.max(0, Number(data.price) || 0),
+          emoji: data.emoji || '🍊',
+          updated_at: now,
+        };
+        stockList.unshift(newStockItem);
+        localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+        if (supabase) {
+          supabase.from('stock_items').upsert([newStockItem], { onConflict: 'fruit_name' }).then(() => {}, () => {});
+        }
+      }
+    } catch {}
+
     return newItem;
   },
 
@@ -2416,7 +2619,7 @@ export const db = {
     const now = new Date().toISOString();
     const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
     let list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
-    const existing = list.find((item) => item.id === id);
+    const existing = list.find((item) => item.id === id || item.name.toLowerCase().trim() === id.toLowerCase().trim());
     if (!existing) throw new Error('Data buah tidak ditemukan.');
 
     const updatedItem: QuickFruitItem = {
@@ -2428,24 +2631,69 @@ export const db = {
     const supabase = getSupabase();
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        const { data: updatedRows } = await supabase
           .from('quick_fruits')
           .update(updatedItem)
-          .eq('id', id)
-          .select()
-          .single();
-        if (!error && data) {
-          list = list.map((item) => (item.id === id ? (data as QuickFruitItem) : item));
+          .eq('id', existing.id)
+          .select();
+        if (updatedRows && updatedRows.length > 0) {
+          list = list.map((item) => (item.id === id ? (updatedRows[0] as QuickFruitItem) : item));
           localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
-          return data as QuickFruitItem;
+        } else {
+          await supabase.from('quick_fruits').update(updatedItem).ilike('name', existing.name);
         }
       } catch {
-        // Fallback
+        try {
+          await supabase.from('quick_fruits').update(updatedItem).ilike('name', existing.name);
+        } catch {}
       }
     }
 
     list = list.map((item) => (item.id === id ? updatedItem : item));
     localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+
+    // Also auto-sync changes to stock_items master!
+    try {
+      const stockRaw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+      if (stockRaw) {
+        let stockList: StockItem[] = JSON.parse(stockRaw);
+        let stockUpdated = false;
+        stockList = stockList.map((s) => {
+          if (
+            s.fruit_name.toLowerCase().trim() === existing.name.toLowerCase().trim() ||
+            s.fruit_name.toLowerCase().trim() === (updatedItem.name || '').toLowerCase().trim()
+          ) {
+            stockUpdated = true;
+            return {
+              ...s,
+              fruit_name: updatedItem.name,
+              unit: updatedItem.unit,
+              latest_selling_price: updatedItem.price,
+              emoji: updatedItem.emoji || s.emoji,
+              updated_at: now,
+            };
+          }
+          return s;
+        });
+        if (stockUpdated) {
+          localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+          if (supabase) {
+            supabase
+              .from('stock_items')
+              .update({
+                fruit_name: updatedItem.name,
+                unit: updatedItem.unit,
+                latest_selling_price: updatedItem.price,
+                emoji: updatedItem.emoji,
+                updated_at: now,
+              })
+              .ilike('fruit_name', existing.name)
+              .then(() => {}, () => {});
+          }
+        }
+      }
+    } catch {}
+
     return updatedItem;
   },
 
@@ -2453,18 +2701,37 @@ export const db = {
     if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
       throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus item buah.');
     }
+    const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+    let list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
+    const target = list.find((item) => item.id === id || item.name.toLowerCase().trim() === id.toLowerCase().trim());
+
     const supabase = getSupabase();
     if (supabase) {
       try {
         await supabase.from('quick_fruits').delete().eq('id', id);
+        if (target?.name) {
+          await supabase.from('quick_fruits').delete().ilike('name', target.name);
+          await supabase.from('stock_items').delete().ilike('fruit_name', target.name);
+        }
       } catch {
         // Fallback
       }
     }
-    const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
-    let list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
-    list = list.filter((item) => item.id !== id);
+
+    list = list.filter((item) => item.id !== id && (!target || item.name.toLowerCase().trim() !== target.name.toLowerCase().trim()));
     localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
+
+    if (target?.name) {
+      try {
+        const sRaw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+        if (sRaw) {
+          let sList: StockItem[] = JSON.parse(sRaw);
+          sList = sList.filter((s) => s.fruit_name.toLowerCase().trim() !== target.name.toLowerCase().trim());
+          localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(sList));
+        }
+      } catch {}
+    }
+
     return true;
   },
 
@@ -2491,17 +2758,23 @@ export const db = {
       const list: StockMovementLog[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_LOGS];
       list.unshift(newLog);
       localStorage.setItem(STORAGE_STOCK_LOGS, JSON.stringify(list));
+
+      const supabase = getSupabase();
+      if (supabase) {
+        supabase.from('stock_movement_logs').insert([newLog]).then(() => {}, () => {});
+      }
     } catch (err) {
       console.warn('recordStockMovementInternal error:', err);
     }
   },
 
-  deductStockForOrder(order: Order, currentUser: Profile): void {
-    if (!order.order_items || order.order_items.length === 0) return;
+  async deductStockForOrder(order: Order, currentUser: Profile): Promise<boolean> {
+    if (!order.order_items || order.order_items.length === 0) return false;
     try {
       const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
       let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
       let updated = false;
+      const updatedStockItems: StockItem[] = [];
 
       for (const item of order.order_items) {
         if (!item.item_name || !item.quantity) continue;
@@ -2511,15 +2784,17 @@ export const db = {
         );
 
         if (matched) {
-          matched.current_stock = Math.max(0, Number((matched.current_stock - item.quantity).toFixed(2)));
+          const qty = Number(item.quantity) || 0;
+          matched.current_stock = Math.max(0, Number((matched.current_stock - qty).toFixed(2)));
           matched.updated_at = new Date().toISOString();
           updated = true;
+          updatedStockItems.push(matched);
 
           this.recordStockMovementInternal({
             fruit_name: matched.fruit_name,
             unit: matched.unit,
             type: 'ORDER_KELUAR',
-            qty_change: -item.quantity,
+            qty_change: -qty,
             stock_after: matched.current_stock,
             reference_id: order.id,
             reference_note: `Penjualan Order #${order.order_number} (${order.customer_name})`,
@@ -2530,9 +2805,98 @@ export const db = {
 
       if (updated) {
         localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+
+        // CRITICAL: Update Supabase stock_items table so stock decreases immediately and permanently!
+        const supabase = getSupabase();
+        if (supabase) {
+          for (const s of updatedStockItems) {
+            try {
+              const { data: rowsUpdated } = await supabase
+                .from('stock_items')
+                .update({ current_stock: s.current_stock, updated_at: s.updated_at })
+                .eq('id', s.id)
+                .select('id');
+              if (!rowsUpdated || rowsUpdated.length === 0) {
+                await supabase
+                  .from('stock_items')
+                  .update({ current_stock: s.current_stock, updated_at: s.updated_at })
+                  .ilike('fruit_name', s.fruit_name);
+              }
+            } catch (err) {
+              console.warn('Supabase deduct stock error:', err);
+            }
+          }
+        }
       }
+      return true;
     } catch (err) {
       console.warn('deductStockForOrder error:', err);
+      return false;
+    }
+  },
+
+  async restoreStockForCancelledOrder(order: Order, currentUser: Profile): Promise<boolean> {
+    if (!order.order_items || order.order_items.length === 0) return false;
+    try {
+      const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
+      let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
+      let updated = false;
+      const updatedStockItems: StockItem[] = [];
+
+      for (const item of order.order_items) {
+        if (!item.item_name || !item.quantity) continue;
+        const targetName = item.item_name.toLowerCase().trim();
+        const matched = list.find(
+          (s) => s.fruit_name.toLowerCase().trim() === targetName || targetName.includes(s.fruit_name.toLowerCase().trim())
+        );
+
+        if (matched) {
+          const qty = Number(item.quantity) || 0;
+          matched.current_stock = Number((matched.current_stock + qty).toFixed(2));
+          matched.updated_at = new Date().toISOString();
+          updated = true;
+          updatedStockItems.push(matched);
+
+          this.recordStockMovementInternal({
+            fruit_name: matched.fruit_name,
+            unit: matched.unit,
+            type: 'PENYESUAIAN',
+            qty_change: qty,
+            stock_after: matched.current_stock,
+            reference_id: order.id,
+            reference_note: `Pembatalan Order #${order.order_number} (${order.customer_name}) - Stok dikembalikan ke gudang`,
+            operator_name: currentUser.name,
+          });
+        }
+      }
+
+      if (updated) {
+        localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+        const supabase = getSupabase();
+        if (supabase) {
+          for (const s of updatedStockItems) {
+            try {
+              const { data: rowsUpdated } = await supabase
+                .from('stock_items')
+                .update({ current_stock: s.current_stock, updated_at: s.updated_at })
+                .eq('id', s.id)
+                .select('id');
+              if (!rowsUpdated || rowsUpdated.length === 0) {
+                await supabase
+                  .from('stock_items')
+                  .update({ current_stock: s.current_stock, updated_at: s.updated_at })
+                  .ilike('fruit_name', s.fruit_name);
+              }
+            } catch (err) {
+              console.warn('Supabase restore stock error:', err);
+            }
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('restoreStockForCancelledOrder error:', err);
+      return false;
     }
   },
 
@@ -2541,18 +2905,69 @@ export const db = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from('stock_items').select('*').order('fruit_name');
-        if (!error && data && data.length > 0) {
+        if (!error && Array.isArray(data)) {
+          // Merge with any local items in localStorage that haven't synced yet, so new items & recent edits are NEVER lost!
+          const rawLocal = localStorage.getItem(STORAGE_STOCK_ITEMS);
+          const localList: StockItem[] = rawLocal ? JSON.parse(rawLocal) : [];
+
+          const localMapById = new Map<string, StockItem>(localList.map((s) => [s.id, s]));
+          const localMapByName = new Map<string, StockItem>(
+            localList.map((s) => [s.fruit_name.toLowerCase().trim(), s])
+          );
+
+          const combined = data.map((d: any) => {
+            const loc =
+              localMapById.get(d.id) || localMapByName.get(d.fruit_name.toLowerCase().trim());
+            // If local item has a more recent updated_at timestamp, use local item and sync to Supabase
+            if (
+              loc &&
+              loc.updated_at &&
+              (!d.updated_at || new Date(loc.updated_at).getTime() > new Date(d.updated_at).getTime())
+            ) {
+              supabase
+                .from('stock_items')
+                .update({
+                  fruit_name: loc.fruit_name,
+                  unit: loc.unit,
+                  current_stock: loc.current_stock,
+                  canvas_allocated_stock: loc.canvas_allocated_stock,
+                  min_stock_alert: loc.min_stock_alert,
+                  avg_cost_price: loc.avg_cost_price,
+                  latest_selling_price: loc.latest_selling_price,
+                  emoji: loc.emoji,
+                  updated_at: loc.updated_at,
+                })
+                .eq('id', d.id)
+                .then(() => {}, () => {});
+              return loc;
+            }
+            return d as StockItem;
+          });
+
+          const supaIds = new Set(data.map((d: any) => d.id));
+          const supaNames = new Set(data.map((d: any) => d.fruit_name.toLowerCase().trim()));
+
+          for (const loc of localList) {
+            if (!supaIds.has(loc.id) && !supaNames.has(loc.fruit_name.toLowerCase().trim())) {
+              combined.push(loc);
+              supabase
+                .from('stock_items')
+                .upsert([loc], { onConflict: 'fruit_name' })
+                .then(() => {}, () => {});
+            }
+          }
+
           try {
-            localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(data));
+            localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(combined));
           } catch {}
-          return data as StockItem[];
+          return combined as StockItem[];
         }
       } catch (err) {
         console.warn('Supabase getStockItems error, falling back to local storage:', err);
       }
     }
     const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
-    if (!raw) {
+    if (raw === null) {
       localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(DEFAULT_STOCK_ITEMS));
       return DEFAULT_STOCK_ITEMS;
     }
@@ -2607,6 +3022,18 @@ export const db = {
     list.unshift(newItem);
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
 
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { error: insErr } = await supabase.from('stock_items').insert([newItem]);
+        if (insErr) {
+          await supabase.from('stock_items').upsert([newItem]);
+        }
+      } catch (err) {
+        console.warn('Supabase createStockItem error:', err);
+      }
+    }
+
     if (newItem.current_stock > 0) {
       this.recordStockMovementInternal({
         fruit_name: newItem.fruit_name,
@@ -2625,7 +3052,7 @@ export const db = {
       const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
       let qfList: QuickFruitItem[] = qfRaw ? JSON.parse(qfRaw) : [...DEFAULT_QUICK_FRUITS];
       if (!qfList.some((q) => q.name.toLowerCase().trim() === newItem.fruit_name.toLowerCase().trim())) {
-        qfList.push({
+        const newQf: QuickFruitItem = {
           id: generateUniqueId('qf'),
           name: newItem.fruit_name,
           unit: newItem.unit,
@@ -2634,8 +3061,12 @@ export const db = {
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        });
+        };
+        qfList.push(newQf);
         localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
+        if (supabase) {
+          supabase.from('quick_fruits').upsert([newQf]).then(() => {}, () => {});
+        }
       }
     } catch {}
 
@@ -2648,34 +3079,54 @@ export const db = {
     }
     const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
     let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
-    const target = list.find((s) => s.id === id);
-    if (!target) throw new Error('Data stok buah tidak ditemukan.');
+    let target = list.find((s) => s.id === id || s.fruit_name.toLowerCase().trim() === id.toLowerCase().trim());
 
-    list = list.filter((s) => s.id !== id);
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        if (!target) {
+          const { data: supaItem } = await supabase.from('stock_items').select('*').eq('id', id).maybeSingle();
+          if (supaItem) target = supaItem as StockItem;
+        }
+
+        await supabase.from('stock_items').delete().eq('id', id);
+
+        if (target?.fruit_name) {
+          await supabase.from('stock_items').delete().ilike('fruit_name', target.fruit_name);
+          await supabase.from('quick_fruits').delete().ilike('name', target.fruit_name);
+        }
+      } catch (err) {
+        console.warn('Supabase deleteStockItem error:', err);
+      }
+    }
+
+    list = list.filter((s) => s.id !== id && (!target || s.fruit_name.toLowerCase().trim() !== target.fruit_name.toLowerCase().trim()));
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
 
     // Also sync deletion to quick fruits
-    try {
-      const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
-      if (qfRaw) {
-        let qfList: QuickFruitItem[] = JSON.parse(qfRaw);
-        qfList = qfList.filter(
-          (q) => q.name.toLowerCase().trim() !== target.fruit_name.toLowerCase().trim()
-        );
-        localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
-      }
-    } catch {}
+    if (target?.fruit_name) {
+      try {
+        const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
+        if (qfRaw) {
+          let qfList: QuickFruitItem[] = JSON.parse(qfRaw);
+          qfList = qfList.filter(
+            (q) => q.name.toLowerCase().trim() !== target!.fruit_name.toLowerCase().trim()
+          );
+          localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
+        }
+      } catch {}
 
-    this.recordStockMovementInternal({
-      fruit_name: target.fruit_name,
-      unit: target.unit,
-      type: 'PENYESUAIAN',
-      qty_change: -target.current_stock,
-      stock_after: 0,
-      reference_id: target.id,
-      reference_note: `Penghapusan Master Buah "${target.fruit_name}" oleh ${currentUser.name}`,
-      operator_name: currentUser.name,
-    });
+      this.recordStockMovementInternal({
+        fruit_name: target.fruit_name,
+        unit: target.unit || 'kg',
+        type: 'PENYESUAIAN',
+        qty_change: -(target.current_stock || 0),
+        stock_after: 0,
+        reference_id: target.id || id,
+        reference_note: `Penghapusan Master Buah "${target.fruit_name}" oleh ${currentUser.name}`,
+        operator_name: currentUser.name,
+      });
+    }
 
     return true;
   },
@@ -2690,8 +3141,27 @@ export const db = {
     }
     const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
     let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
-    const existing = list.find((s) => s.id === id);
-    if (!existing) throw new Error('Data stok tidak ditemukan.');
+
+    let index = list.findIndex(
+      (s) => s.id === id || s.fruit_name.toLowerCase().trim() === id.toLowerCase().trim()
+    );
+
+    // If not found in list, attempt fetch from Supabase
+    if (index === -1) {
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          const { data } = await supabase.from('stock_items').select('*').or(`id.eq.${id},fruit_name.ilike.${id}`).maybeSingle();
+          if (data) {
+            list.push(data as StockItem);
+            index = list.length - 1;
+          }
+        } catch {}
+      }
+    }
+
+    if (index === -1) throw new Error('Data stok buah tidak ditemukan.');
+    const existing = list[index];
 
     const updatedItem: StockItem = {
       ...existing,
@@ -2699,24 +3169,56 @@ export const db = {
       updated_at: new Date().toISOString(),
     };
 
-    list = list.map((s) => (s.id === id ? updatedItem : s));
+    if (updates.current_stock !== undefined && Number(updates.current_stock) !== Number(existing.current_stock)) {
+      const diff = Number((Number(updates.current_stock) - Number(existing.current_stock)).toFixed(2));
+      this.recordStockMovementInternal({
+        fruit_name: updatedItem.fruit_name,
+        unit: updatedItem.unit,
+        type: 'PENYESUAIAN',
+        qty_change: diff,
+        stock_after: updatedItem.current_stock,
+        reference_id: updatedItem.id,
+        reference_note: `Penyesuaian Stok dari ${existing.current_stock} menjadi ${updatedItem.current_stock} ${updatedItem.unit}`,
+        operator_name: currentUser.name,
+      });
+    }
+
+    list[index] = updatedItem;
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
 
-    // Also sync update to quick fruits
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data: upById } = await supabase.from('stock_items').update(updatedItem).eq('id', existing.id).select('id');
+        if (!upById || upById.length === 0) {
+          const { data: upByName } = await supabase.from('stock_items').update(updatedItem).ilike('fruit_name', existing.fruit_name).select('id');
+          if (!upByName || upByName.length === 0) {
+            await supabase.from('stock_items').upsert([updatedItem], { onConflict: 'fruit_name' });
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase updateStockItem error:', err);
+      }
+    }
+
+    // Also sync update to quick fruits (both in LocalStorage & Supabase!)
     try {
       const qfRaw = localStorage.getItem(STORAGE_QUICK_FRUITS);
       if (qfRaw) {
         let qfList: QuickFruitItem[] = JSON.parse(qfRaw);
         let found = false;
         qfList = qfList.map((q) => {
-          if (q.name.toLowerCase().trim() === existing.fruit_name.toLowerCase().trim()) {
+          if (
+            q.name.toLowerCase().trim() === existing.fruit_name.toLowerCase().trim() ||
+            q.name.toLowerCase().trim() === (updatedItem.fruit_name || '').toLowerCase().trim()
+          ) {
             found = true;
             return {
               ...q,
               name: updatedItem.fruit_name,
               unit: updatedItem.unit,
-              price: updatedItem.latest_selling_price,
-              emoji: updatedItem.emoji,
+              price: updatedItem.latest_selling_price || q.price,
+              emoji: updatedItem.emoji || q.emoji,
               updated_at: new Date().toISOString(),
             };
           }
@@ -2727,14 +3229,28 @@ export const db = {
             id: generateUniqueId('qf'),
             name: updatedItem.fruit_name,
             unit: updatedItem.unit,
-            price: updatedItem.latest_selling_price,
-            emoji: updatedItem.emoji,
+            price: updatedItem.latest_selling_price || 0,
+            emoji: updatedItem.emoji || '🍊',
             is_active: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
         }
         localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(qfList));
+
+        if (supabase) {
+          supabase
+            .from('quick_fruits')
+            .update({
+              name: updatedItem.fruit_name,
+              unit: updatedItem.unit,
+              price: updatedItem.latest_selling_price,
+              emoji: updatedItem.emoji,
+              updated_at: new Date().toISOString(),
+            })
+            .ilike('name', existing.fruit_name)
+            .then(() => {}, () => {});
+        }
       }
     } catch {}
 
@@ -2747,6 +3263,16 @@ export const db = {
     }
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify([]));
     localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify([]));
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('stock_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('quick_fruits').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (err) {
+        console.warn('Supabase clearAllFruitMaster error:', err);
+      }
+    }
     return true;
   },
 
@@ -2756,6 +3282,16 @@ export const db = {
     }
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(DEFAULT_STOCK_ITEMS));
     localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(DEFAULT_QUICK_FRUITS));
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('stock_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('stock_items').upsert(DEFAULT_STOCK_ITEMS, { onConflict: 'fruit_name' });
+      } catch (err) {
+        console.warn('Supabase resetStockItemsToDefault error:', err);
+      }
+    }
     return DEFAULT_STOCK_ITEMS;
   },
 
@@ -2779,6 +3315,18 @@ export const db = {
     existing.updated_at = new Date().toISOString();
 
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('stock_items').update({
+          current_stock: existing.current_stock,
+          updated_at: existing.updated_at,
+        }).eq('id', id);
+      } catch (err) {
+        console.warn('Supabase adjustStockManually error:', err);
+      }
+    }
 
     this.recordStockMovementInternal({
       fruit_name: existing.fruit_name,
@@ -2808,8 +3356,43 @@ export const db = {
   // KULAKAN / BELANJA & SORTIR MASUK GUDANG
   // ------------------------------------------
   async getStockInbounds(): Promise<StockInbound[]> {
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('stock_inbounds').select('*').order('created_at', { ascending: false });
+        if (!error && Array.isArray(data)) {
+          const mapped: StockInbound[] = data.map((d: any) => ({
+            id: d.id,
+            purchase_date: d.purchase_date || (d.received_date ? String(d.received_date).slice(0, 10) : new Date().toISOString().slice(0, 10)),
+            fruit_name: d.fruit_name,
+            supplier_name: d.supplier_name || 'Pasar Induk',
+            buyer_id: d.buyer_id || 'usr-admin',
+            buyer_name: d.buyer_name || d.recorded_by_name || 'Admin',
+            gross_purchase_qty: Number(d.gross_purchase_qty || d.quantity || 0),
+            purchase_price_per_unit: Number(d.purchase_price_per_unit || d.cost_price || 0),
+            total_purchase_amount: Number(d.total_purchase_amount || d.total_cost || 0),
+            payment_method: d.payment_method || 'Tunai',
+            payment_status: d.payment_status || 'Lunas',
+            invoice_no: d.invoice_no || '',
+            sorting_checked: d.sorting_checked ?? true,
+            shrinkage_qty: Number(d.shrinkage_qty || 0),
+            surplus_qty: Number(d.surplus_qty || 0),
+            net_stocked_qty: Number(d.net_stocked_qty || d.quantity || 0),
+            quality_notes: d.quality_notes || d.notes || '',
+            created_at: d.created_at || new Date().toISOString(),
+            created_by: d.created_by || d.recorded_by_name || 'Admin',
+          }));
+          try {
+            localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(mapped));
+          } catch {}
+          return mapped;
+        }
+      } catch (err) {
+        console.warn('Supabase getStockInbounds error, falling back to local storage:', err);
+      }
+    }
     const raw = localStorage.getItem(STORAGE_STOCK_INBOUNDS);
-    if (!raw) {
+    if (raw === null) {
       localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(DEFAULT_STOCK_INBOUNDS));
       return DEFAULT_STOCK_INBOUNDS;
     }
@@ -2890,6 +3473,31 @@ export const db = {
 
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
 
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('stock_inbounds').insert([{
+          id: newInbound.id,
+          fruit_name: newInbound.fruit_name,
+          unit: stockItem ? stockItem.unit : 'kg',
+          quantity: newInbound.net_stocked_qty,
+          cost_price: newInbound.purchase_price_per_unit,
+          total_cost: newInbound.total_purchase_amount,
+          supplier_name: newInbound.supplier_name,
+          notes: newInbound.quality_notes || '',
+          received_date: newInbound.purchase_date,
+          recorded_by_name: currentUser.name,
+        }]);
+        await supabase.from('stock_items').update({
+          current_stock: stockItem.current_stock,
+          avg_cost_price: stockItem.avg_cost_price,
+          updated_at: now,
+        }).ilike('fruit_name', stockItem.fruit_name);
+      } catch (err) {
+        console.warn('Supabase createStockInbound error:', err);
+      }
+    }
+
     // Audit log
     const notesSummary = shrinkage > 0 ? ` (Susut/Rusak: ${shrinkage}kg)` : '';
     const surplusSummary = surplus > 0 ? ` (Lebih: +${surplus}kg)` : '';
@@ -2911,6 +3519,14 @@ export const db = {
     if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
       throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus data belanja.');
     }
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('stock_inbounds').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteStockInbound error:', err);
+      }
+    }
     const raw = localStorage.getItem(STORAGE_STOCK_INBOUNDS);
     let list: StockInbound[] = raw ? JSON.parse(raw) : [];
     list = list.filter((i) => i.id !== id);
@@ -2921,31 +3537,84 @@ export const db = {
   // ------------------------------------------
   // ALUR KURIR CANVAS KELILING & REKONSILIASI
   // ------------------------------------------
-  async getCanvasTrips(): Promise<CanvasTrip[]> {
+  async getCanvasTrips(currentUser?: Profile | null): Promise<CanvasTrip[]> {
+    const filterByRole = (trips: CanvasTrip[]) => {
+      if (currentUser?.role === 'Kurir') {
+        return trips.filter(
+          (t) =>
+            t.courier_id === currentUser.id ||
+            (t.courier_name && currentUser.name && t.courier_name.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
+        );
+      }
+      if (currentUser?.role === 'Sales') {
+        // Sales does not do canvas deliveries; keep confidential
+        return trips.filter(
+          (t) =>
+            t.courier_id === currentUser.id ||
+            (t.courier_name && currentUser.name && t.courier_name.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
+        );
+      }
+      return trips;
+    };
+
     const supabase = getSupabase();
     if (supabase) {
       try {
         const { data, error } = await supabase.from('canvas_trips').select('*').order('trip_date', { ascending: false });
-        if (!error && data && data.length > 0) {
-          try {
-            localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(data));
-          } catch {}
-          return data as CanvasTrip[];
+        if (!error && Array.isArray(data)) {
+          const rawLocal = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+          const localList: CanvasTrip[] = rawLocal ? JSON.parse(rawLocal) : [];
+          const localMap = new Map(localList.map((t) => [t.id, t]));
+
+          const merged = data.map((st: any) => {
+            const loc = localMap.get(st.id);
+            // If local trip was marked Selesai & Rekonsiliasi, preserve it and re-sync to Supabase
+            if (loc && loc.status === 'Selesai & Rekonsiliasi' && st.status !== 'Selesai & Rekonsiliasi') {
+              supabase.from('canvas_trips').update({
+                status: loc.status,
+                items: loc.items,
+                total_expected_cash: loc.total_expected_cash,
+                actual_cash_submitted: loc.actual_cash_submitted,
+                cash_difference: loc.cash_difference,
+                remittance_status: loc.remittance_status,
+              }).eq('id', loc.id).then(() => {}, () => {});
+              return loc;
+            }
+            return st as CanvasTrip;
+          });
+
+          // Also include any local trips not yet in Supabase
+          const supaIds = new Set(data.map((d: any) => d.id));
+          for (const loc of localList) {
+            if (!supaIds.has(loc.id)) {
+              merged.push(loc);
+              supabase.from('canvas_trips').insert([loc]).then(() => {}, () => {});
+            }
+          }
+
+          if (!currentUser || currentUser.role === 'Owner' || currentUser.role === 'Manager') {
+            try {
+              localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(merged));
+            } catch {}
+          }
+          const sorted = merged.sort((a, b) => new Date(b.trip_date).getTime() - new Date(a.trip_date).getTime());
+          return filterByRole(sorted);
         }
       } catch (err) {
         console.warn('Supabase getCanvasTrips error, falling back to local storage:', err);
       }
     }
     const raw = localStorage.getItem(STORAGE_CANVAS_TRIPS);
-    if (!raw) {
+    if (raw === null) {
       localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(DEFAULT_CANVAS_TRIPS));
-      return DEFAULT_CANVAS_TRIPS;
+      return filterByRole(DEFAULT_CANVAS_TRIPS);
     }
     try {
       const list: CanvasTrip[] = JSON.parse(raw);
-      return list.sort((a, b) => new Date(b.trip_date).getTime() - new Date(a.trip_date).getTime());
+      const sorted = list.sort((a, b) => new Date(b.trip_date).getTime() - new Date(a.trip_date).getTime());
+      return filterByRole(sorted);
     } catch {
-      return DEFAULT_CANVAS_TRIPS;
+      return filterByRole(DEFAULT_CANVAS_TRIPS);
     }
   },
 
@@ -3021,6 +3690,33 @@ export const db = {
     }
 
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('canvas_trips').insert([newTrip]);
+        for (const item of tripItems) {
+          const s = stockList.find((x) => x.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim());
+          if (s) {
+            const { data: upById } = await supabase.from('stock_items').update({
+              current_stock: s.current_stock,
+              canvas_allocated_stock: s.canvas_allocated_stock,
+              updated_at: now,
+            }).eq('id', s.id).select('id');
+            if (!upById || upById.length === 0) {
+              await supabase.from('stock_items').update({
+                current_stock: s.current_stock,
+                canvas_allocated_stock: s.canvas_allocated_stock,
+                updated_at: now,
+              }).ilike('fruit_name', s.fruit_name);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase createCanvasTrip error:', err);
+      }
+    }
+
     return newTrip;
   },
 
@@ -3034,8 +3730,8 @@ export const db = {
     },
     currentUser: Profile
   ): Promise<CanvasTrip> {
-    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
-      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat melakukan rekonsiliasi serah terima canvas.');
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager' && currentUser.role !== 'Kurir') {
+      throw new Error('Akses Ditolak: Anda tidak memiliki hak akses melakukan rekonsiliasi canvas.');
     }
     const rawTrips = localStorage.getItem(STORAGE_CANVAS_TRIPS);
     let trips: CanvasTrip[] = rawTrips ? JSON.parse(rawTrips) : [...DEFAULT_CANVAS_TRIPS];
@@ -3071,11 +3767,14 @@ export const db = {
     trip.cash_difference = cashDiff;
     trip.returned_at = now;
     trip.verified_by_name = reconciliationData.verified_by_name || currentUser.name;
+    trip.remittance_status = 'Sudah Disetor ke Kas';
+    trip.remitted_at = now;
+    trip.remitted_by_name = trip.verified_by_name || currentUser.name;
     if (reconciliationData.notes) trip.notes = reconciliationData.notes;
 
     localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(trips));
 
-    // Return stock back to warehouse
+    // Return stock back to warehouse: current_stock increases by returned_qty, canvas_allocated_stock decreases by brought_qty
     const rawStock = localStorage.getItem(STORAGE_STOCK_ITEMS);
     let stockList: StockItem[] = rawStock ? JSON.parse(rawStock) : [...DEFAULT_STOCK_ITEMS];
 
@@ -3103,6 +3802,56 @@ export const db = {
     }
 
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const supaTripUpdate = {
+          status: 'Selesai & Rekonsiliasi',
+          items: reconciledItems,
+          total_expected_cash: totalExpectedCash,
+          actual_cash_submitted: actualCash,
+          cash_difference: cashDiff,
+          notes: trip.notes || '',
+          verified_by_name: trip.verified_by_name || currentUser.name,
+          remittance_status: trip.remittance_status,
+          remitted_at: trip.remitted_at,
+          remitted_by_name: trip.remitted_by_name,
+        };
+        const { error: tripErr } = await supabase.from('canvas_trips').update(supaTripUpdate).eq('id', trip.id);
+        if (tripErr) {
+          // If optional columns fail, update base columns
+          await supabase.from('canvas_trips').update({
+            status: 'Selesai & Rekonsiliasi',
+            items: reconciledItems,
+            total_expected_cash: totalExpectedCash,
+            actual_cash_submitted: actualCash,
+            cash_difference: cashDiff,
+          }).eq('id', trip.id);
+        }
+
+        for (const item of reconciledItems) {
+          const s = stockList.find((x) => x.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim());
+          if (s) {
+            const { data: upById } = await supabase.from('stock_items').update({
+              current_stock: s.current_stock,
+              canvas_allocated_stock: s.canvas_allocated_stock,
+              updated_at: now,
+            }).eq('id', s.id).select('id');
+            if (!upById || upById.length === 0) {
+              await supabase.from('stock_items').update({
+                current_stock: s.current_stock,
+                canvas_allocated_stock: s.canvas_allocated_stock,
+                updated_at: now,
+              }).ilike('fruit_name', s.fruit_name);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase reconcileCanvasTrip error:', err);
+      }
+    }
+
     return trip;
   },
 
@@ -3110,10 +3859,96 @@ export const db = {
     if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
       throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menghapus riwayat canvas.');
     }
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('canvas_trips').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteCanvasTrip error:', err);
+      }
+    }
     const raw = localStorage.getItem(STORAGE_CANVAS_TRIPS);
     let list: CanvasTrip[] = raw ? JSON.parse(raw) : [];
     list = list.filter((t) => t.id !== id);
     localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(list));
+    return true;
+  },
+
+  // Safe Reset: Only clears transactions, canvas, logs, and resets stock numbers to 0
+  // NEVER touches profiles (users), prospects (customers), zones, or business types
+  async resetTransactionAndStockData(currentUser: Profile): Promise<boolean> {
+    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
+      throw new Error('Hanya Owner dan Manager yang berhak mengosongkan data transaksi dan me-reset stok.');
+    }
+
+    const client = getSupabase();
+    if (client) {
+      try {
+        // Delete all orders
+        await client.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('Supabase reset orders warn:', e);
+      }
+
+      try {
+        // Delete canvas trips
+        await client.from('canvas_trips').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('Supabase reset canvas_trips warn:', e);
+      }
+
+      try {
+        // Delete stock inbounds
+        await client.from('stock_inbounds').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('Supabase reset stock_inbounds warn:', e);
+      }
+
+      try {
+        // Delete stock logs
+        await client.from('stock_movement_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('Supabase reset stock_movement_logs warn:', e);
+      }
+
+      try {
+        // Reset stock items quantity to 0
+        await client.from('stock_items').update({ current_stock: 0, canvas_allocated_stock: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('Supabase reset stock_items warn:', e);
+      }
+    }
+
+    // Always clear localStorage for transactions & reset stocks
+    localStorage.removeItem(STORAGE_ORDERS);
+    localStorage.removeItem(STORAGE_REMITTANCE_MAP);
+    localStorage.removeItem(STORAGE_CANVAS_TRIPS);
+    localStorage.removeItem(STORAGE_STOCK_INBOUNDS);
+    localStorage.removeItem(STORAGE_STOCK_LOGS);
+
+    // Reset stock items to 0 kg in localStorage
+    const rawStock = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    if (rawStock) {
+      try {
+        const items: StockItem[] = JSON.parse(rawStock);
+        const resetItems = items.map((it) => ({
+          ...it,
+          current_stock: 0,
+          canvas_allocated_stock: 0,
+        }));
+        localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(resetItems));
+      } catch {
+        localStorage.removeItem(STORAGE_STOCK_ITEMS);
+      }
+    } else {
+      const resetItems = DEFAULT_STOCK_ITEMS.map((it) => ({
+        ...it,
+        current_stock: 0,
+        canvas_allocated_stock: 0,
+      }));
+      localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(resetItems));
+    }
+
     return true;
   },
 

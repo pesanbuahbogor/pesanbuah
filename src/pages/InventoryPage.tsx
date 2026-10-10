@@ -35,6 +35,7 @@ import { CanvasTripModal } from '../components/CanvasTripModal';
 import { CanvasReconciliationModal } from '../components/CanvasReconciliationModal';
 import { StockAdjustmentModal } from '../components/StockAdjustmentModal';
 import { FruitMasterModal } from '../components/FruitMasterModal';
+import { subscribeToRealtime } from '../lib/supabase';
 
 interface InventoryPageProps {
   onNavigateToOrdersRemittance?: () => void;
@@ -67,6 +68,8 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
   const [isFruitModalOpen, setIsFruitModalOpen] = useState(false);
   const [selectedStockForEdit, setSelectedStockForEdit] = useState<StockItem | null>(null);
   const [deleteFruitConfirmItem, setDeleteFruitConfirmItem] = useState<StockItem | null>(null);
+  const [deleteInboundConfirmItem, setDeleteInboundConfirmItem] = useState<StockInbound | null>(null);
+  const [deleteCanvasConfirmItem, setDeleteCanvasConfirmItem] = useState<CanvasTrip | null>(null);
   const [isClearMasterConfirmOpen, setIsClearMasterConfirmOpen] = useState(false);
   const [isResetMasterConfirmOpen, setIsResetMasterConfirmOpen] = useState(false);
 
@@ -96,6 +99,23 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
 
   useEffect(() => {
     loadAllData();
+
+    // Supabase Realtime subscriptions
+    const unsubStock = subscribeToRealtime('stock_items', () => {
+      db.getStockItems().then(setStockItems).catch(() => {});
+    });
+    const unsubInbound = subscribeToRealtime('stock_inbounds', () => {
+      db.getStockInbounds().then(setStockInbounds).catch(() => {});
+    });
+    const unsubCanvas = subscribeToRealtime('canvas_trips', () => {
+      db.getCanvasTrips().then(setCanvasTrips).catch(() => {});
+    });
+
+    return () => {
+      unsubStock();
+      unsubInbound();
+      unsubCanvas();
+    };
   }, []);
 
   if (!isOwner && !isManager) {
@@ -190,27 +210,27 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
     }
   };
 
-  const handleDeleteInbound = async (id: string) => {
+  const handleDeleteInbound = async (item: StockInbound) => {
     if (!currentUser) return;
-    if (!window.confirm('Hapus riwayat belanja ini? (Stok gudang tidak akan otomatis terpotong)')) return;
     try {
-      await db.deleteStockInbound(id, currentUser);
-      success('Riwayat belanja dihapus.');
+      await db.deleteStockInbound(item.id, currentUser);
+      success(`Riwayat belanja ${item.fruit_name} dari ${item.supplier_name || 'supplier'} berhasil dihapus.`);
+      setDeleteInboundConfirmItem(null);
       loadAllData();
     } catch (err: any) {
-      toastError(err.message || 'Gagal menghapus.');
+      toastError(err.message || 'Gagal menghapus riwayat belanja.');
     }
   };
 
-  const handleDeleteCanvas = async (id: string) => {
+  const handleDeleteCanvas = async (trip: CanvasTrip) => {
     if (!currentUser) return;
-    if (!window.confirm('Hapus riwayat canvas keliling ini?')) return;
     try {
-      await db.deleteCanvasTrip(id, currentUser);
-      success('Riwayat canvas dihapus.');
+      await db.deleteCanvasTrip(trip.id, currentUser);
+      success(`Riwayat canvas kurir ${trip.courier_name} berhasil dihapus.`);
+      setDeleteCanvasConfirmItem(null);
       loadAllData();
     } catch (err: any) {
-      toastError(err.message || 'Gagal menghapus.');
+      toastError(err.message || 'Gagal menghapus riwayat canvas.');
     }
   };
 
@@ -826,9 +846,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
                         <td className="py-2.5 px-3 text-center">
                           <button
                             type="button"
-                            onClick={() => handleDeleteInbound(inb.id)}
-                            className="p-1 text-gray-400 hover:text-rose-600 rounded-lg"
-                            title="Hapus"
+                            onClick={() => setDeleteInboundConfirmItem(inb)}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                            title="Hapus riwayat belanja"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -850,14 +870,38 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
                 <h3 className="text-sm font-bold text-gray-900">Canvas Kurir Keliling &amp; Rekonsiliasi Buah</h3>
                 <p className="text-xs text-gray-500">Alokasikan stok buah yang dibawa keliling, pantau laku terjual, dan terima sisa buah ke gudang</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsCanvasModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shrink-0 transition"
-              >
-                <Truck className="w-3.5 h-3.5" />
-                <span>+ Berangkatkan Canvas</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCanvasModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shrink-0 transition"
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>+ Berangkatkan Canvas</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Canvas Financial & Qty Quick Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-blue-50/50 p-2.5 rounded-xl border border-blue-200/80 text-xs">
+              <div>
+                <span className="text-[10px] text-blue-700 font-medium block">Total Armada Canvas</span>
+                <span className="font-bold text-blue-950 font-mono">{canvasTrips.length} trip ({activeCanvasTrips} aktif)</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-blue-700 font-medium block">Stok Sedang Dibawa</span>
+                <span className="font-bold text-blue-950 font-mono">{totalCanvasKg.toFixed(1)} kg</span>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <span className="text-[10px] text-emerald-700 font-bold block">Total Uang Penjualan Canvas</span>
+                <span className="font-extrabold text-emerald-900 font-mono">
+                  {formatRupiah(
+                    canvasTrips
+                      .filter((t) => t.status === 'Selesai & Rekonsiliasi')
+                      .reduce((sum, t) => sum + (Number(t.actual_cash_submitted || t.total_expected_cash) || 0), 0)
+                  )}
+                </span>
+              </div>
             </div>
 
             {canvasTrips.length === 0 ? (
@@ -897,9 +941,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
 
                         <button
                           type="button"
-                          onClick={() => handleDeleteCanvas(trip.id)}
-                          className="p-1 text-gray-400 hover:text-rose-600"
-                          title="Hapus Trip"
+                          onClick={() => setDeleteCanvasConfirmItem(trip)}
+                          className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                          title="Hapus Trip Canvas"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -942,8 +986,15 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
                           Rekonsiliasi Sisa Buah &amp; Uang
                         </button>
                       ) : (
-                        <div className="text-center text-xs font-bold text-emerald-700 bg-emerald-50 py-1.5 rounded-xl border border-emerald-200">
-                          ✓ Sisa buah telah dikembalikan ke stok gudang
+                        <div className="p-2 text-center text-xs bg-emerald-50 rounded-xl border border-emerald-200 space-y-0.5">
+                          <div className="font-bold text-emerald-800">
+                            ✓ Sisa buah telah dikembalikan ke stok gudang
+                          </div>
+                          {(trip.actual_cash_submitted > 0 || trip.total_expected_cash > 0) && (
+                            <div className="text-[11px] text-emerald-700 font-semibold font-mono">
+                              Uang Penjualan Diterima: {formatRupiah(trip.actual_cash_submitted || trip.total_expected_cash)}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1106,6 +1157,84 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToOrders
                 className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs cursor-pointer"
               >
                 Ya, Hapus Buah
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Inbound Confirmation Modal */}
+      {deleteInboundConfirmItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 text-sm">Hapus Riwayat Belanja?</h4>
+                <p className="text-xs text-gray-600 mt-1">
+                  Hapus transaksi kulakan <strong>{deleteInboundConfirmItem.fruit_name}</strong> dari <strong>{deleteInboundConfirmItem.supplier_name || 'Supplier'}</strong> ({deleteInboundConfirmItem.gross_purchase_qty} kg)?
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Catatan: Stok gudang saat ini tidak akan otomatis terpotong.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setDeleteInboundConfirmItem(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteInbound(deleteInboundConfirmItem)}
+                className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs cursor-pointer"
+              >
+                Ya, Hapus Belanja
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Canvas Confirmation Modal */}
+      {deleteCanvasConfirmItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 text-sm">Hapus Riwayat Canvas?</h4>
+                <p className="text-xs text-gray-600 mt-1">
+                  Hapus riwayat penugasan canvas armada kurir <strong>{deleteCanvasConfirmItem.courier_name}</strong> tanggal {deleteCanvasConfirmItem.trip_date}?
+                </p>
+                <p className="text-[11px] text-amber-700 font-medium mt-1">
+                  Status: {deleteCanvasConfirmItem.status}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setDeleteCanvasConfirmItem(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteCanvas(deleteCanvasConfirmItem)}
+                className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs cursor-pointer"
+              >
+                Ya, Hapus Canvas
               </button>
             </div>
           </div>

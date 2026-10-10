@@ -17,9 +17,15 @@ import {
   UserX,
   CheckCircle,
   AlertTriangle,
+  RotateCcw,
+  Database,
 } from 'lucide-react';
 
-export const UserManagementPage: React.FC = () => {
+interface UserManagementPageProps {
+  onOpenSupabaseModal?: (tab?: 'config' | 'sql' | 'reset') => void;
+}
+
+export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onOpenSupabaseModal }) => {
   const { currentUser, isOwner, refreshCurrentUser } = useAuth();
   const { success, error: toastError } = useToast();
 
@@ -301,6 +307,37 @@ export const UserManagementPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Database Maintenance & Clean Slate Panel (Khusus Owner) */}
+      <div className="p-4 sm:p-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-sm border border-slate-700/80 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                <RotateCcw className="w-4 h-4" />
+              </span>
+              <h3 className="font-bold text-sm sm:text-base text-white tracking-tight">
+                Pemeliharaan Database: Mulai Periode Baru
+              </h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+              Ingin mengosongkan riwayat order dan mengembalikan seluruh stok fisik menjadi 0 kg untuk memulai operasional dari awal?
+              Data akun user dan pelanggan CRM Anda <strong>dijamin 100% aman dan tidak akan terhapus</strong>.
+            </p>
+          </div>
+
+          {onOpenSupabaseModal && (
+            <button
+              type="button"
+              onClick={() => onOpenSupabaseModal('reset')}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Kosongkan Transaksi &amp; Stok</span>
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Add / Edit User Modal */}
       {isModalOpen && (

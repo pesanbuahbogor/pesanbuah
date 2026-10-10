@@ -169,9 +169,15 @@ CREATE TABLE IF NOT EXISTS public.stock_items (
     canvas_allocated_stock NUMERIC NOT NULL DEFAULT 0,
     min_stock_alert NUMERIC NOT NULL DEFAULT 10,
     avg_cost_price NUMERIC NOT NULL DEFAULT 0,
+    latest_selling_price NUMERIC NOT NULL DEFAULT 0,
+    emoji TEXT DEFAULT '🍊',
     notes TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS latest_selling_price NUMERIC DEFAULT 0;
+ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS emoji TEXT DEFAULT '🍊';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN DEFAULT FALSE;
 
 -- 12. TABEL STOCK INBOUNDS (Riwayat Kulakan / Belanja Supplier)
 CREATE TABLE IF NOT EXISTS public.stock_inbounds (
@@ -215,6 +221,8 @@ CREATE TABLE IF NOT EXISTS public.canvas_trips (
 ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS remittance_status TEXT DEFAULT 'Belum Disetor (Ada di Kurir)';
 ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS remitted_at TIMESTAMPTZ;
 ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS remitted_by_name TEXT;
+ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS returned_at TIMESTAMPTZ;
+ALTER TABLE public.canvas_trips ADD COLUMN IF NOT EXISTS verified_by_name TEXT;
 
 -- 14. TABEL STOCK MOVEMENT LOGS (Audit Trail Mutasi Stok)
 CREATE TABLE IF NOT EXISTS public.stock_movement_logs (
@@ -338,4 +346,37 @@ ON CONFLICT (fruit_name) DO NOTHING;
 export const supabaseSetupSql = supabaseMasterSql;
 export const supabaseQuickPermissionFixSql = supabaseMasterSql;
 export const supabaseAddPotentialNeedsSql = supabaseMasterSql;
+
+// Skrip khusus untuk mengosongkan data transaksi & me-reset stok ke 0 (Customer & User 100% Aman)
+export const supabaseResetTransactionsSql = `-- ==============================================================================
+-- PESANBUAH.ID - SKRIP KOSONGKAN TRANSAKSI & RESET STOK (CUSTOMER & USER AMAN)
+-- Salin dan jalankan skrip ini di SQL Editor Supabase untuk memulai dari awal
+-- ==============================================================================
+
+-- 1. Kosongkan semua data order transaksi & pengantaran kurir
+TRUNCATE TABLE public.orders CASCADE;
+
+-- 2. Kosongkan riwayat trip canvas kurir
+TRUNCATE TABLE public.canvas_trips CASCADE;
+
+-- 3. Kosongkan riwayat belanja inbound supplier
+TRUNCATE TABLE public.stock_inbounds CASCADE;
+
+-- 4. Kosongkan riwayat log mutasi stok
+TRUNCATE TABLE public.stock_movement_logs CASCADE;
+
+-- 5. Reset seluruh angka stok fisik komoditas menjadi 0 kg (Daftar komoditas tetap ada)
+UPDATE public.stock_items 
+SET current_stock = 0, 
+    canvas_allocated_stock = 0;
+
+-- ==============================================================================
+-- DATA YANG TETAP AMAN DAN TIDAK DIHAPUS SAMA SEKALI:
+-- ✓ Data Customer & CRM (public.prospects & public.prospect_photos)
+-- ✓ Akun Pengguna / User Internal (public.profiles)
+-- ✓ Master Wilayah (public.zones & public.zone_members)
+-- ✓ Master Jenis Usaha (public.business_types)
+-- ✓ Master Katalog Buah Cepat (public.quick_fruits)
+-- ==============================================================================
+`;
 

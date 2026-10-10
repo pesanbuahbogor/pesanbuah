@@ -24,6 +24,12 @@ const AppContent: React.FC = () => {
   const { currentUser, isLoading, isOwner, isManager, isCourierOnly } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [supabaseInitialTab, setSupabaseInitialTab] = useState<'config' | 'sql' | 'reset'>('config');
+
+  const handleOpenSupabaseModal = (tab: 'config' | 'sql' | 'reset' = 'config') => {
+    setSupabaseInitialTab(tab);
+    setIsSupabaseModalOpen(true);
+  };
   const [initialStatusFilter, setInitialStatusFilter] = useState<ProspectStatus | undefined>(undefined);
   const [isCreateOpenInitially, setIsCreateOpenInitially] = useState(false);
   const [orderInitialMode, setOrderInitialMode] = useState<'orders' | 'remittance'>('orders');
@@ -33,12 +39,12 @@ const AppContent: React.FC = () => {
     setCurrentTab('orders');
   };
 
-  // If user is pure Kurir, default to 'orders' tab
+  // If user is pure Kurir, lock strictly to 'orders' tab (Delivery)
   React.useEffect(() => {
-    if (isCourierOnly && currentTab === 'dashboard') {
+    if (isCourierOnly && currentTab !== 'orders') {
       setCurrentTab('orders');
     }
-  }, [isCourierOnly]);
+  }, [isCourierOnly, currentTab]);
 
   // Auto-sync initial master data and prospects to Supabase in background whenever app starts
   React.useEffect(() => {
@@ -88,7 +94,7 @@ const AppContent: React.FC = () => {
           if (tab !== 'orders') setOrderInitialMode('orders');
           setCurrentTab(tab);
         }}
-        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+        onOpenSupabaseModal={() => handleOpenSupabaseModal('config')}
       />
 
       {/* Global Permission Alert Banner if Supabase table permissions are denied */}
@@ -102,7 +108,7 @@ const AppContent: React.FC = () => {
           <DashboardPage
             onNavigateToProspects={handleNavigateToProspects}
             onOpenCreateProspect={handleOpenCreateProspect}
-            onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+            onOpenSupabaseModal={() => handleOpenSupabaseModal('config')}
             onNavigateToOrders={() => setCurrentTab('orders')}
             onNavigateToInventory={() => setCurrentTab('inventory')}
           />
@@ -114,7 +120,7 @@ const AppContent: React.FC = () => {
           <InventoryPage onNavigateToOrdersRemittance={handleNavigateToOrdersRemittance} />
         )}
 
-        {currentTab === 'order_reports' && !isCourierOnly && <OrderReportsPage />}
+        {currentTab === 'order_reports' && (isOwner || isManager) && <OrderReportsPage />}
 
         {currentTab === 'prospects' && !isCourierOnly && (
           <ProspectsPage
@@ -128,7 +134,9 @@ const AppContent: React.FC = () => {
 
         {currentTab === 'business_types' && (isOwner || isManager) && <BusinessTypesPage />}
 
-        {currentTab === 'user_management' && isOwner && <UserManagementPage />}
+        {currentTab === 'user_management' && isOwner && (
+          <UserManagementPage onOpenSupabaseModal={handleOpenSupabaseModal} />
+        )}
       </main>
 
       {/* Persistent Bottom Navigation Bar for Mobile / Field Usage */}
@@ -157,6 +165,7 @@ const AppContent: React.FC = () => {
       {isOwner && (
         <SupabaseModal
           isOpen={isSupabaseModalOpen}
+          initialTab={supabaseInitialTab}
           onClose={() => setIsSupabaseModalOpen(false)}
         />
       )}

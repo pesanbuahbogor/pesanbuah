@@ -37,12 +37,15 @@ import {
   Receipt,
   CheckCheck,
   ShieldAlert,
+  RefreshCw,
+  Lock,
 } from 'lucide-react';
 import { Order, OrderStatus, DeliverySlot, Profile, Zone, Prospect, CanvasTrip } from '../types';
 import { db } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { formatRupiah } from '../lib/orderScheduleUtils';
+import { subscribeToRealtime } from '../lib/supabase';
 import { OrderFormModal } from '../components/OrderFormModal';
 import { DeliveryCompletionModal } from '../components/DeliveryCompletionModal';
 import { ManageFruitsModal } from '../components/ManageFruitsModal';
@@ -65,6 +68,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [canvasTrips, setCanvasTrips] = useState<CanvasTrip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<Date>(new Date());
 
   // Main Page Mode: 'orders' (Daftar Order & Pengantaran) or 'remittance' (Monitoring Kas & Setoran Kurir)
   const [mainPageTab, setMainPageTab] = useState<'orders' | 'remittance'>(initialPageMode);
@@ -85,7 +90,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
 
   // Mobile & Compact view states
   const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
-  const [viewDensity, setViewDensity] = useState<'mini' | 'standar' | 'rinci'>('mini');
+  const [viewDensity, setViewDensity] = useState<'mini' | 'standar' | 'rinci'>('standar');
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -221,7 +226,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         db.getProfiles(),
         db.getZones(),
         db.getProspects(currentUser),
-        db.getCanvasTrips(),
+        db.getCanvasTrips(currentUser),
       ]);
       setOrders(ordersData);
       setProfiles(profilesData);
@@ -237,7 +242,52 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
 
   useEffect(() => {
     loadData();
+
+    // Supabase Realtime subscriptions: Instantly updates field couriers when orders/trips change
+    const unsubOrders = subscribeToRealtime('orders', () => {
+      db.getOrders(currentUser)
+        .then((freshOrders) => {
+          setOrders(freshOrders);
+          setLastSyncedTime(new Date());
+        })
+        .catch(() => {});
+    });
+
+    const unsubCanvas = subscribeToRealtime('canvas_trips', () => {
+      db.getCanvasTrips()
+        .then((freshTrips) => {
+          setCanvasTrips(freshTrips);
+          setLastSyncedTime(new Date());
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      unsubOrders();
+      unsubCanvas();
+    };
   }, [currentUser]);
+
+  // Realtime field heartbeat: background polling fallback every 15 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible' &&
+        !isFormModalOpen &&
+        !completionOrder &&
+        !deleteConfirmOrder
+      ) {
+        db.getOrders(currentUser)
+          .then((freshOrders) => {
+            setOrders(freshOrders);
+            setLastSyncedTime(new Date());
+          })
+          .catch(() => {});
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [currentUser, isFormModalOpen, completionOrder, deleteConfirmOrder]);
 
   // List of staff who can be assigned as couriers
   const availableCouriers = useMemo(() => {
@@ -250,8 +300,35 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
   const tomorrowStr = tomorrowObj.toISOString().slice(0, 10);
 
+  // Scoped list of orders accessible to the current user
+  // (Dedicated Kurir has access to orders assigned to him/her, plus active unassigned orders waiting to be delivered)
+  // (Sales ONLY has access to orders created by or assigned to him/her)
+  const accessibleOrders = useMemo(() => {
+    if (isCourierOnly) {
+      return orders.filter((o) => {
+        const isMyDelivery =
+          o.courier_id === currentUser?.id ||
+          (o.courier_name && currentUser?.name && o.courier_name.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+        if (isMyDelivery) return true;
+        // Kurir can also view active unassigned orders (Diterima or Disiapkan) to handle them
+        const isAvailableToHandle =
+          (!o.courier_id || o.courier_id === '') &&
+          (o.status === 'Diterima' || o.status === 'Disiapkan');
+        return isAvailableToHandle;
+      });
+    }
+    if (isSales) {
+      return orders.filter(
+        (o) =>
+          o.created_by === currentUser?.id ||
+          (o.sales_rep && currentUser?.name && o.sales_rep.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      );
+    }
+    return orders;
+  }, [orders, isCourierOnly, isSales, currentUser]);
+
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
+    return accessibleOrders.filter((order) => {
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -280,7 +357,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
       }
 
       // Courier
-      if (filterCourier) {
+      if (!isCourierOnly && filterCourier) {
         if (filterCourier === 'unassigned') {
           if (order.courier_id) return false;
         } else if (order.courier_id !== filterCourier) {
@@ -317,7 +394,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
 
       return true;
     });
-  }, [orders, searchQuery, filterStatus, filterSlot, filterCourier, filterDateRange, filterRemittance, todayStr, tomorrowStr]);
+  }, [accessibleOrders, searchQuery, filterStatus, filterSlot, filterCourier, filterDateRange, filterRemittance, todayStr, tomorrowStr, isCourierOnly]);
 
   // Pending COD Cash currently held in couriers' hands
   const pendingCashOrders = useMemo(() => {
@@ -330,10 +407,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   }, [orders]);
 
   const myPendingCashOrders = useMemo(() => {
-    return isCourierOnly
-      ? pendingCashOrders.filter((o) => o.courier_id === currentUser?.id)
-      : pendingCashOrders;
-  }, [pendingCashOrders, isCourierOnly, currentUser]);
+    return pendingCashOrders.filter(
+      (o) =>
+        o.courier_id === currentUser?.id ||
+        (o.courier_name && currentUser?.name && o.courier_name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    );
+  }, [pendingCashOrders, currentUser]);
 
   const totalPendingCashAmount = useMemo(() => {
     return myPendingCashOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
@@ -353,6 +432,23 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
     );
   }, [canvasTrips]);
 
+  const myPendingCanvasCashItems = useMemo(() => {
+    return pendingCanvasCashItems.filter(
+      (t) =>
+        t.courier_id === currentUser?.id ||
+        (t.courier_name && currentUser?.name && t.courier_name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    );
+  }, [pendingCanvasCashItems, currentUser]);
+
+  const totalMyPendingCanvasCash = useMemo(() => {
+    return myPendingCanvasCashItems.reduce(
+      (acc, t) => acc + (Number(t.actual_cash_submitted) || 0),
+      0
+    );
+  }, [myPendingCanvasCashItems]);
+
+  const myTotalPendingCashToRemit = totalPendingCashAmount + totalMyPendingCanvasCash;
+
   const totalPendingCanvasCash = useMemo(() => {
     return pendingCanvasCashItems.reduce(
       (acc, t) => acc + (Number(t.actual_cash_submitted) || 0),
@@ -367,7 +463,9 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
     );
   }, [pendingCashOrders]);
 
-  const totalCashInCouriersHands = totalPendingOrderCash + totalPendingCanvasCash;
+  const totalCashInCouriersHands = isCourierOnly
+    ? myTotalPendingCashToRemit
+    : totalPendingOrderCash + totalPendingCanvasCash;
 
   const remittedOrderCash = useMemo(() => {
     return orders
@@ -384,7 +482,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   const totalCashRemittedToCompany = remittedOrderCash + remittedCanvasCash;
 
   const pendingCashByCourier = useMemo(() => {
-    const list = couriersList
+    let list = couriersList
       .map((c) => {
         const courierOrders = pendingCashOrders.filter(
           (o) => o.courier_id === c.id || (o.courier_name && o.courier_name.trim().toLowerCase() === c.name.trim().toLowerCase())
@@ -408,47 +506,69 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
       })
       .filter((x) => x.hasPending);
 
-    // Also account for any pending orders assigned to staff not in couriersList or unassigned
-    const accountedOrderIds = new Set(list.flatMap((x) => x.orders.map((o) => o.id)));
-    const unlinkedOrders = pendingCashOrders.filter((o) => !accountedOrderIds.has(o.id));
-    if (unlinkedOrders.length > 0) {
-      const ordersAmount = unlinkedOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
-      list.push({
-        courier: {
-          id: 'unassigned',
-          name: unlinkedOrders[0]?.courier_name || 'Kurir Lapangan / Belum Tertaut',
-          role: 'Kurir',
-          phone: '-',
-          active: true,
-          email: '',
-          created_at: '',
-          updated_at: '',
-        } as Profile,
-        orders: unlinkedOrders,
-        canvasTrips: [],
-        ordersAmount,
-        canvasAmount: 0,
-        totalAmount: ordersAmount,
-        hasPending: true,
-      });
+    // If pure Kurir, only show his/her own data in the breakdown!
+    if (isCourierOnly) {
+      list = list.filter(
+        (x) =>
+          x.courier.id === currentUser?.id ||
+          (x.courier.name && currentUser?.name && x.courier.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      );
+    } else {
+      // Also account for any pending orders assigned to staff not in couriersList or unassigned
+      const accountedOrderIds = new Set(list.flatMap((x) => x.orders.map((o) => o.id)));
+      const unlinkedOrders = pendingCashOrders.filter((o) => !accountedOrderIds.has(o.id));
+      if (unlinkedOrders.length > 0) {
+        const ordersAmount = unlinkedOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+        list.push({
+          courier: {
+            id: 'unassigned',
+            name: unlinkedOrders[0]?.courier_name || 'Kurir Lapangan / Belum Tertaut',
+            role: 'Kurir',
+            phone: '-',
+            active: true,
+            email: '',
+            created_at: '',
+            updated_at: '',
+          } as Profile,
+          orders: unlinkedOrders,
+          canvasTrips: [],
+          ordersAmount,
+          canvasAmount: 0,
+          totalAmount: ordersAmount,
+          hasPending: true,
+        });
+      }
     }
 
     return list;
-  }, [couriersList, pendingCashOrders, pendingCanvasCashItems]);
+  }, [couriersList, pendingCashOrders, pendingCanvasCashItems, isCourierOnly, currentUser]);
 
-  // Statistics calculation for the current filter view
+  // Statistics calculation for the current filter view (Scoped strictly to courier if courier is logged in)
   const stats = useMemo(() => {
-    const total = orders.length;
-    const diterima = orders.filter((o) => o.status === 'Diterima').length;
-    const disiapkan = orders.filter((o) => o.status === 'Disiapkan').length;
-    const sedangDiantar = orders.filter((o) => o.status === 'Sedang Diantar').length;
-    const selesai = orders.filter((o) => o.status === 'Selesai').length;
-    const omset = orders
+    const total = accessibleOrders.length;
+    const diterima = accessibleOrders.filter((o) => o.status === 'Diterima').length;
+    const disiapkan = accessibleOrders.filter((o) => o.status === 'Disiapkan').length;
+    const sedangDiantar = accessibleOrders.filter((o) => o.status === 'Sedang Diantar').length;
+    const selesai = accessibleOrders.filter((o) => o.status === 'Selesai').length;
+    const omset = accessibleOrders
       .filter((o) => o.status !== 'Dibatalkan')
       .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
 
-    return { total, diterima, disiapkan, sedangDiantar, selesai, omset };
-  }, [orders]);
+    const canvasSales = (isOwner || isManager)
+      ? canvasTrips
+          .filter((t) => t.status === 'Selesai & Rekonsiliasi')
+          .reduce((sum, t) => sum + (Number(t.actual_cash_submitted || t.total_expected_cash) || 0), 0)
+      : isCourierOnly
+      ? canvasTrips
+          .filter((t) => t.status === 'Selesai & Rekonsiliasi')
+          .filter((t) => t.courier_id === currentUser?.id || (t.courier_name && currentUser?.name && t.courier_name.toLowerCase().trim() === currentUser.name.toLowerCase().trim()))
+          .reduce((sum, t) => sum + (Number(t.actual_cash_submitted || t.total_expected_cash) || 0), 0)
+      : 0;
+
+    const totalOmset = (isOwner || isManager) ? omset + canvasSales : isCourierOnly ? canvasSales : omset;
+
+    return { total, diterima, disiapkan, sedangDiantar, selesai, omset, canvasSales, totalOmset };
+  }, [accessibleOrders, canvasTrips, isCourierOnly, isSales, isOwner, isManager, currentUser]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -497,10 +617,24 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   const handleQuickStatusChange = async (order: Order, newStatus: OrderStatus) => {
     if (!currentUser) return;
     try {
-      await db.updateOrder(order.id, { status: newStatus }, currentUser);
-      success(`Status Order #${order.order_number} diubah menjadi "${newStatus}"`);
-      loadData();
+      const updates: Partial<Order> = { status: newStatus };
+      // If courier (or user with courier role) is taking or delivering the order,
+      // automatically assign order to this courier if not yet assigned
+      if ((isCourierOnly || currentUser.role === 'Kurir') && (!order.courier_id || order.courier_id !== currentUser.id)) {
+        updates.courier_id = currentUser.id;
+        updates.courier_name = currentUser.name;
+      }
+      await db.updateOrder(order.id, updates, currentUser);
+      success(`Status Order #${order.order_number} berhasil diubah menjadi "${newStatus}"!`);
+      // If user is currently filtering by previous status, auto-switch to new status tab so order remains visible
+      if (filterStatus === 'Disiapkan' && newStatus === 'Sedang Diantar') {
+        setFilterStatus('Sedang Diantar');
+      } else if (filterStatus === 'Diterima' && newStatus === 'Disiapkan') {
+        setFilterStatus('Disiapkan');
+      }
+      await loadData();
     } catch (err: any) {
+      console.error('Error changing order status:', err);
       toastError(err.message || 'Gagal mengubah status.');
     }
   };
@@ -549,7 +683,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-2.5 sm:py-4 space-y-2.5">
       {/* Main Tabs Navigation: Responsive 2-column Grid on Mobile, Flex on Desktop (Zero hidden tabs, Zero horizontal scrolling) */}
-      <div className="grid grid-cols-2 gap-2 border-b border-gray-200 pb-2 sm:flex sm:gap-2">
+      <div className={`grid ${isSales ? 'grid-cols-1' : 'grid-cols-2'} gap-2 border-b border-gray-200 pb-2 sm:flex sm:gap-2`}>
         <button
           type="button"
           onClick={() => setMainPageTab('orders')}
@@ -560,7 +694,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
           }`}
         >
           <ShoppingBag className="w-4 h-4 shrink-0" />
-          <span className="truncate">Order Delivery</span>
+          <span className="truncate">{isSales ? 'Order Penjualan Saya' : isCourierOnly ? 'Daftar Pengantaran' : 'Order Delivery'}</span>
           <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold shrink-0 ${
             mainPageTab === 'orders' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-800'
           }`}>
@@ -568,31 +702,47 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setMainPageTab('remittance')}
-          className={`w-full sm:w-auto px-2.5 sm:px-3 py-2 sm:py-1.5 text-xs sm:text-sm font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-            mainPageTab === 'remittance'
-              ? 'bg-amber-500 text-white shadow-2xs'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Coins className="w-4 h-4 shrink-0" />
-          <span className="truncate">Kas Kurir</span>
-          {totalCashInCouriersHands > 0 ? (
-            <span className={`text-[10px] px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-full font-black shrink-0 ${
-              mainPageTab === 'remittance' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-950 animate-pulse'
-            }`}>
-              {formatRupiah(totalCashInCouriersHands)}
-            </span>
-          ) : (
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold shrink-0 ${
-              mainPageTab === 'remittance' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
-            }`}>
-              Beres
+        {!isSales && (
+          <button
+            type="button"
+            onClick={() => setMainPageTab('remittance')}
+            className={`w-full sm:w-auto px-2.5 sm:px-3 py-2 sm:py-1.5 text-xs sm:text-sm font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
+              mainPageTab === 'remittance'
+                ? 'bg-amber-500 text-white shadow-2xs'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Coins className="w-4 h-4 shrink-0" />
+            <span className="truncate">{isCourierOnly ? 'Setoran Saya' : 'Kas Kurir'}</span>
+            {totalCashInCouriersHands > 0 ? (
+              <span className={`text-[10px] px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-full font-black shrink-0 ${
+                mainPageTab === 'remittance' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-950 animate-pulse'
+              }`}>
+                {formatRupiah(totalCashInCouriersHands)}
+              </span>
+            ) : (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold shrink-0 ${
+                mainPageTab === 'remittance' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+              }`}>
+                Beres
+              </span>
+            )}
+          </button>
+        )}
+
+        <div className="col-span-2 sm:col-span-1 sm:ml-auto flex items-center justify-between sm:justify-end gap-2 bg-emerald-50/80 border border-emerald-200/80 px-2.5 py-1 rounded-xl text-xs">
+          <span className="text-[11px] text-emerald-800 font-semibold">
+            {isCourierOnly ? 'Omset Pengantaran Anda:' : isSales ? 'Omset Penjualan Anda:' : 'Total Omset Perusahaan:'}
+          </span>
+          <span className="font-mono font-black text-emerald-900 text-xs sm:text-sm">
+            {formatRupiah(isSales ? stats.omset : stats.totalOmset)}
+          </span>
+          {stats.canvasSales > 0 && (isOwner || isManager) && (
+            <span className="text-[10px] text-emerald-700 hidden lg:inline">
+              (Order: {formatRupiah(stats.omset)} + Canvas: {formatRupiah(stats.canvasSales)})
             </span>
           )}
-        </button>
+        </div>
       </div>
 
       {mainPageTab === 'orders' && (
@@ -614,6 +764,24 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
             </div>
 
             <div className="flex items-center flex-wrap gap-1.5">
+              {/* Quick Realtime Sync Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRefreshing(true);
+                  loadData().finally(() => {
+                    setIsRefreshing(false);
+                    setLastSyncedTime(new Date());
+                  });
+                }}
+                disabled={isRefreshing}
+                className="inline-flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer"
+                title={`Update instan realtime (${lastSyncedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Sinkron</span>
+              </button>
+
               {/* Segmented view density toggle: Mini, Standar, Rinci */}
               <div className="inline-flex rounded-xl bg-gray-100 p-0.5 border border-gray-200 shadow-2xs">
                 <button
@@ -777,33 +945,35 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
               </span>
             </button>
 
-            {/* Quick button for Pending Remittance */}
-            <button
-              type="button"
-              onClick={() => {
-                setFilterRemittance(filterRemittance === 'pending' ? 'all' : 'pending');
-                setFilterStatus('');
-              }}
-              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 border ${
-                filterRemittance === 'pending'
-                  ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
-                  : pendingCashOrders.length > 0
-                  ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-                  : 'bg-white text-gray-600 border-gray-200'
-              }`}
-            >
-              <Coins className="w-3 h-3 text-amber-600" />
-              <span>⚠️ Belum Setor COD</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                filterRemittance === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-950 font-black'
-              }`}>
-                {pendingCashOrders.length}
-              </span>
-            </button>
+            {/* Quick button for Pending Remittance (Hidden for Sales for confidentiality) */}
+            {!isSales && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterRemittance(filterRemittance === 'pending' ? 'all' : 'pending');
+                  setFilterStatus('');
+                }}
+                className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 border ${
+                  filterRemittance === 'pending'
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                    : (isCourierOnly ? myPendingCashOrders.length : pendingCashOrders.length) > 0
+                    ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                    : 'bg-white text-gray-600 border-gray-200'
+                }`}
+              >
+                <Coins className="w-3 h-3 text-amber-600" />
+                <span>⚠️ Belum Setor COD</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  filterRemittance === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-950 font-black'
+                }`}>
+                  {isCourierOnly ? myPendingCashOrders.length : pendingCashOrders.length}
+                </span>
+              </button>
+            )}
           </div>
 
-      {/* Outstanding Cash Banner - Compact on HP & Dismissible */}
-      {totalPendingCashAmount > 0 && filterRemittance !== 'pending' && !isBannerDismissed && (
+      {/* Outstanding Cash Banner - Compact on HP & Dismissible (Hidden for Sales) */}
+      {!isSales && totalPendingCashAmount > 0 && filterRemittance !== 'pending' && !isBannerDismissed && (
         <div className="p-2 sm:p-2.5 bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50 border border-amber-300 rounded-xl flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 min-w-0">
             <span className="p-1 rounded-lg bg-amber-500 text-white font-black text-xs shrink-0">💵</span>
@@ -917,23 +1087,25 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
               </select>
             </div>
 
-            {/* Courier Filter */}
-            <div>
-              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">Kurir</label>
-              <select
-                value={filterCourier}
-                onChange={(e) => setFilterCourier(e.target.value)}
-                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-hidden"
-              >
-                <option value="">Semua Kurir</option>
-                <option value="unassigned">Belum Ada Kurir</option>
-                {availableCouriers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Courier Filter - Hidden from dedicated Courier */}
+            {!isCourierOnly && (
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">Kurir</label>
+                <select
+                  value={filterCourier}
+                  onChange={(e) => setFilterCourier(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-hidden"
+                >
+                  <option value="">Semua Kurir</option>
+                  <option value="unassigned">Belum Ada Kurir</option>
+                  {availableCouriers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Status Filter */}
             <div>
@@ -1121,9 +1293,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                       <button
                         type="button"
                         onClick={() => handleQuickStatusChange(order, 'Sedang Diantar')}
-                        className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer flex items-center gap-0.5"
+                        className="px-2 py-1 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer flex items-center gap-0.5"
+                        title="Ubah status order menjadi Sedang Diantar"
                       >
-                        <Truck className="w-3 h-3" /> Antar
+                        <Truck className="w-3 h-3" /> {order.courier_id === currentUser?.id ? 'Antar' : 'Ambil & Antar'}
                       </button>
                     )}
 
@@ -1239,10 +1412,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                         )}
                       </div>
 
-                      {/* Truncated Address with GPS icon */}
+                      {/* Full Address with GPS icon */}
                       <p className="text-[11px] text-gray-600 mt-1 flex items-start gap-1">
                         <MapPin className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${hasGps ? 'text-emerald-600' : 'text-amber-500'}`} />
-                        <span className={isExpanded ? 'leading-relaxed' : 'truncate'}>
+                        <span className="leading-relaxed break-words line-clamp-2">
                           {order.delivery_address}
                         </span>
                       </p>
@@ -1250,8 +1423,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                   </div>
 
                   {/* Item brief summary */}
-                  <div className="text-[11px] text-gray-700 bg-gray-50/80 px-2 py-1 rounded-lg border border-gray-100 flex items-center justify-between gap-2">
-                    <span className="truncate">
+                  <div className="text-[11px] text-gray-700 bg-gray-50/80 px-2 py-1.5 rounded-lg border border-gray-100 flex items-center justify-between gap-2">
+                    <span className="break-words line-clamp-2">
                       <strong>Buah:</strong> {order.items_summary}
                     </span>
                     {order.customer_notes && (
@@ -1302,9 +1475,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                       <button
                         type="button"
                         onClick={() => handleQuickStatusChange(order, 'Sedang Diantar')}
-                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1"
+                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1"
+                        title="Ubah status pesanan menjadi Sedang Diantar (Kurir Berangkat)"
                       >
-                        <Truck className="w-3 h-3" /> Mulai Antar
+                        <Truck className="w-3 h-3" /> {order.courier_id === currentUser?.id ? 'Mulai Antar' : 'Ambil & Mulai Antar'}
                       </button>
                     )}
 
@@ -1449,24 +1623,68 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                             </select>
                           </div>
                         ) : (
-                          <span className="text-[11px] text-gray-600">
-                            Kurir: <strong>{order.courier_name || 'Belum Ditugaskan'}</strong>
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] text-gray-600">
+                              Kurir: <strong>{order.courier_name || 'Belum Ditugaskan'}</strong>
+                            </span>
+                            {isCourierOnly && order.status !== 'Selesai' && order.status !== 'Dibatalkan' && (
+                              order.courier_id === currentUser?.id ? (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
+                                  ✓ Ditugaskan ke Saya
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAssignCourier(order, currentUser!.id)}
+                                  className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-[11px] font-bold transition cursor-pointer"
+                                  title="Ambil penugasan order ini ke saya"
+                                >
+                                  {order.courier_id ? 'Ganti ke Saya' : 'Ambil Order Ini'}
+                                </button>
+                              )
+                            )}
+                          </div>
                         )}
 
                         <div className="flex items-center gap-1">
-                          {canManageOrders && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingOrder(order);
-                                setIsFormModalOpen(true);
-                              }}
-                              className="p-1 text-gray-400 hover:text-gray-700 rounded transition cursor-pointer"
-                              title="Edit Data Order"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
+                          {order.status === 'Selesai' || order.status === 'Dibatalkan' ? (
+                            isSales ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-gray-400 bg-gray-100 border border-gray-200"
+                                title="Order telah selesai dan terkunci. Sales tidak dapat mengubah data ini."
+                              >
+                                <Lock className="w-3 h-3 text-gray-400" />
+                                <span>Terkunci</span>
+                              </span>
+                            ) : (
+                              (isOwner || isManager) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingOrder(order);
+                                    setIsFormModalOpen(true);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-gray-700 rounded transition cursor-pointer"
+                                  title="Edit Data Order (Akses Khusus Manager/Owner)"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                              )
+                            )
+                          ) : (
+                            canManageOrders && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingOrder(order);
+                                  setIsFormModalOpen(true);
+                                }}
+                                className="p-1 text-gray-400 hover:text-gray-700 rounded transition cursor-pointer"
+                                title="Edit Data Order"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                            )
                           )}
                           {(isOwner || isManager) && (
                             <button
@@ -1535,59 +1753,86 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
           </div>
 
           {/* Remittance KPI Overview */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl shadow-2xs space-y-1">
+          {isCourierOnly ? (
+            <div className="p-4 sm:p-5 bg-gradient-to-br from-amber-500/10 via-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl shadow-2xs space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-900 uppercase">Uang di Tangan Kurir</span>
-                <div className="p-2 bg-amber-200/70 rounded-xl text-amber-900">
-                  <Banknote className="w-4 h-4" />
+                <div>
+                  <span className="text-xs font-bold text-amber-900 uppercase">Uang Tunai COD &amp; Canvas di Tangan Anda</span>
+                  <div className="font-extrabold text-sm text-amber-950 mt-0.5">Staf Kurir: {currentUser?.name}</div>
+                </div>
+                <div className="p-2.5 bg-amber-400 text-amber-950 rounded-2xl shadow-2xs">
+                  <Banknote className="w-6 h-6" />
                 </div>
               </div>
-              <div className="font-mono font-black text-xl sm:text-2xl text-amber-950">
+              <div className="font-mono font-black text-2xl sm:text-3xl text-amber-950">
                 {formatRupiah(totalCashInCouriersHands)}
               </div>
-              <div className="text-[11px] text-amber-800 pt-1 flex items-center gap-1 font-semibold">
+              <div className="text-xs text-amber-800 flex items-center gap-1.5 font-medium pt-0.5">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                <span>Belum disetorkan ({pendingCashOrders.length} order COD, {pendingCanvasCashItems.length} canvas)</span>
+                <span>
+                  {myPendingCashOrders.length} Order COD ({formatRupiah(totalPendingCashAmount)})
+                  {myPendingCanvasCashItems.length > 0 && ` + ${myPendingCanvasCashItems.length} Canvas (${formatRupiah(totalMyPendingCanvasCash)})`}
+                </span>
               </div>
+              <p className="text-[11px] text-amber-700 pt-1 border-t border-amber-200/60">
+                Uang fisik hasil pembayaran pelanggan yang wajib Anda setorkan kepada Kasir / Manager kantor di akhir jam operasional.
+              </p>
             </div>
-
-            <div className="p-3.5 sm:p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl shadow-2xs space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-900 uppercase">Kas Resmi Masuk Perusahaan</span>
-                <div className="p-2 bg-emerald-200/70 rounded-xl text-emerald-800">
-                  <CheckCheck className="w-4 h-4" />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-900 uppercase">Uang di Tangan Kurir</span>
+                  <div className="p-2 bg-amber-200/70 rounded-xl text-amber-900">
+                    <Banknote className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="font-mono font-black text-xl sm:text-2xl text-amber-950">
+                  {formatRupiah(totalCashInCouriersHands)}
+                </div>
+                <div className="text-[11px] text-amber-800 pt-1 flex items-center gap-1 font-semibold">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                  <span>Belum disetorkan ({pendingCashOrders.length} order COD, {pendingCanvasCashItems.length} canvas)</span>
                 </div>
               </div>
-              <div className="font-mono font-black text-xl sm:text-2xl text-emerald-900">
-                {formatRupiah(totalCashRemittedToCompany)}
-              </div>
-              <div className="text-[11px] text-emerald-700 pt-1 font-semibold">
-                <span>Sudah diserahkan kurir &amp; diverifikasi masuk kas resmi</span>
-              </div>
-            </div>
 
-            <div className="p-3.5 sm:p-4 bg-white border border-gray-200 rounded-2xl shadow-2xs space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500 uppercase">Kurir Memegang Uang</span>
-                <div className="p-2 bg-gray-100 rounded-xl text-gray-600">
-                  <User className="w-4 h-4" />
+              <div className="p-3.5 sm:p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-900 uppercase">Kas Resmi Masuk Perusahaan</span>
+                  <div className="p-2 bg-emerald-200/70 rounded-xl text-emerald-800">
+                    <CheckCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="font-mono font-black text-xl sm:text-2xl text-emerald-900">
+                  {formatRupiah(totalCashRemittedToCompany)}
+                </div>
+                <div className="text-[11px] text-emerald-700 pt-1 font-semibold">
+                  <span>Sudah diserahkan kurir &amp; diverifikasi masuk kas resmi</span>
                 </div>
               </div>
-              <div className="font-mono font-black text-xl sm:text-2xl text-gray-900">
-                {pendingCashByCourier.length} <span className="text-sm font-semibold text-gray-500">orang kurir</span>
-              </div>
-              <div className="text-[11px] text-gray-400 pt-1">
-                Staf kurir dengan saldo uang setoran tertunda
+
+              <div className="p-3.5 sm:p-4 bg-white border border-gray-200 rounded-2xl shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 uppercase">Kurir Memegang Uang</span>
+                  <div className="p-2 bg-gray-100 rounded-xl text-gray-600">
+                    <User className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="font-mono font-black text-xl sm:text-2xl text-gray-900">
+                  {pendingCashByCourier.length} <span className="text-sm font-semibold text-gray-500">orang kurir</span>
+                </div>
+                <div className="text-[11px] text-gray-400 pt-1">
+                  Staf kurir dengan saldo uang setoran tertunda
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* List of Couriers with Pending Cash */}
           <div className="space-y-3">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-gray-500" />
-              <span>Rincian Uang yang Masih Dipegang Kurir (Belum Disetor)</span>
+              <span>{isCourierOnly ? 'Rincian Uang yang Wajib Anda Setorkan ke Kasir' : 'Rincian Uang yang Masih Dipegang Kurir (Belum Disetor)'}</span>
             </h3>
 
             {pendingCashByCourier.length === 0 ? (

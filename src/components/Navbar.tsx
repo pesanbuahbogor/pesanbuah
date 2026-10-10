@@ -36,7 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, onOpe
     { id: 'prospects', label: 'CRM', icon: Users, visible: !isCourierOnly },
     { id: 'inventory', label: 'Inventory', icon: Boxes, visible: isOwner || isManager },
     { id: 'orders', label: isCourierOnly ? 'Delivery' : 'Order Delivery', icon: isCourierOnly ? Truck : ShoppingBag, visible: true },
-    { id: 'order_reports', label: 'Report', icon: BarChart3, visible: !isCourierOnly },
+    { id: 'order_reports', label: 'Report', icon: BarChart3, visible: isOwner || isManager },
   ].filter((item) => item.visible);
 
   const secondaryNavItems = [

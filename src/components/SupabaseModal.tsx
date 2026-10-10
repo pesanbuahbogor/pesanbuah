@@ -14,6 +14,9 @@ import {
   Sparkles,
   ShieldCheck,
   Layers,
+  RotateCcw,
+  Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -26,22 +29,30 @@ import {
 } from '../lib/supabase';
 import { db } from '../lib/db';
 import { useToast } from './Toast';
-import { supabaseMasterSql } from '../lib/supabase-schema-sql';
+import { useAuth } from '../context/AuthContext';
+import { supabaseMasterSql, supabaseResetTransactionsSql } from '../lib/supabase-schema-sql';
 
 interface SupabaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDataReset?: () => void;
+  initialTab?: 'config' | 'sql' | 'reset';
 }
 
-export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, onDataReset }) => {
+export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, onDataReset, initialTab }) => {
+  const { currentUser } = useAuth();
   const { success, error: toastError } = useToast();
   const currentConfig = getStoredSupabaseConfig();
   const [url, setUrl] = useState(currentConfig.url);
   const [anonKey, setAnonKey] = useState(currentConfig.key);
   const [isCopied, setIsCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'config' | 'sql'>('config');
+  const [isResetSqlCopied, setIsResetSqlCopied] = useState(false);
+  const [isResettingTransactions, setIsResettingTransactions] = useState(false);
+  const [activeTab, setActiveTab] = useState<'config' | 'sql' | 'reset'>('config');
   const [showGuide, setShowGuide] = useState(false);
+  const [showFactoryResetWarning, setShowFactoryResetWarning] = useState(false);
+  const [confirmPhrase, setConfirmPhrase] = useState('');
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -52,8 +63,13 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
       setUrl(cfg.url);
       setAnonKey(cfg.key);
       setTestResult(null);
+      setResetSuccessMessage(null);
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
+      setConfirmPhrase('');
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   const isConnected = !!getSupabase();
   const cleanedUrl = sanitizeSupabaseUrl(url);
@@ -200,7 +216,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
   };
 
   const handleResetData = () => {
-    if (confirm('Apakah Anda yakin ingin me-reset database ke data awal? Semua perubahan tes akan kembali ke data bawaan PesanBuah.id.')) {
+    if (confirm('PERINGATAN: Apakah Anda yakin ingin me-reset SEMUA data termasuk pelanggan dan user ke data demo bawaan pabrik? Jika hanya ingin mengosongkan transaksi dan stok, gunakan Tab 3.')) {
       db.resetToInitialSeed();
       success('Database berhasil di-reset ke data bawaan!');
       if (onDataReset) onDataReset();
@@ -208,6 +224,38 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
         window.location.reload();
       }, 500);
     }
+  };
+
+  const handleResetTransactions = async () => {
+    if (!currentUser) {
+      toastError('Sesi pengguna tidak valid.');
+      return;
+    }
+    if (confirmPhrase.trim().toUpperCase() !== 'KOSONGKAN') {
+      toastError('Harap ketik kata KOSONGKAN untuk mengonfirmasi.');
+      return;
+    }
+
+    try {
+      setIsResettingTransactions(true);
+      await db.resetTransactionAndStockData(currentUser);
+      const msg = 'Data transaksi berhasil dikosongkan dan stok telah di-reset ke 0! Data pelanggan CRM dan akun pengguna tetap aman.';
+      setResetSuccessMessage(msg);
+      success(msg);
+      setConfirmPhrase('');
+      if (onDataReset) onDataReset();
+    } catch (err: any) {
+      toastError(err.message || 'Gagal mengosongkan data transaksi.');
+    } finally {
+      setIsResettingTransactions(false);
+    }
+  };
+
+  const copyResetSqlToClipboard = () => {
+    navigator.clipboard.writeText(supabaseResetTransactionsSql);
+    setIsResetSqlCopied(true);
+    success('Skrip SQL Reset Transaksi berhasil disalin ke clipboard!');
+    setTimeout(() => setIsResetSqlCopied(false), 2500);
   };
 
   const copyMasterSqlToClipboard = () => {
@@ -267,35 +315,46 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
           </button>
         </div>
 
-        {/* 2 Clean Tabs */}
-        <div className="flex border-b border-gray-200 px-4 sm:px-5 pt-2 bg-gray-50/50">
+        {/* 3 Clean Tabs */}
+        <div className="flex border-b border-gray-200 px-3 sm:px-5 pt-2 bg-gray-50/50 overflow-x-auto no-scrollbar gap-1 sm:gap-2">
           <button
             onClick={() => setActiveTab('config')}
-            className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-1.5 cursor-pointer ${
+            className={`pb-3 px-2 sm:px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'config'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <Key className="w-4 h-4" />
-            <span>1. Pengaturan Koneksi (URL &amp; Key)</span>
+            <span>1. Koneksi Supabase</span>
           </button>
           <button
             onClick={() => setActiveTab('sql')}
-            className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-1.5 cursor-pointer ${
+            className={`pb-3 px-2 sm:px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'sql'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <Sparkles className="w-4 h-4 text-emerald-600" />
-            <span>2. Master Skrip SQL (1 Skrip Lengkap &amp; Terbaik)</span>
+            <span>2. Master Skrip SQL</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('reset')}
+            className={`pb-3 px-2 sm:px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'reset'
+                ? 'border-rose-600 text-rose-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <RotateCcw className="w-4 h-4 text-rose-600" />
+            <span>3. Kosongkan Transaksi &amp; Stok</span>
           </button>
         </div>
 
         {/* Content */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          {activeTab === 'config' ? (
+          {activeTab === 'config' && (
             <div className="space-y-4">
               {/* Guidance / Help box */}
               <div className="p-3.5 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-xs text-emerald-950 space-y-2">
@@ -455,7 +514,9 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
                 )}
               </div>
             </div>
-          ) : (
+          )}
+
+          {activeTab === 'sql' && (
             /* TAB 2: 1 MASTER SKRIP SQL TERBAIK */
             <div className="space-y-4">
               <div className="p-4 bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 border-2 border-emerald-300 rounded-2xl space-y-2 text-xs text-emerald-950 shadow-2xs">
@@ -508,6 +569,177 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose, o
               <pre className="p-4 bg-gray-950 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto max-h-72 leading-relaxed border border-gray-800 shadow-inner select-all">
                 {supabaseMasterSql}
               </pre>
+            </div>
+          )}
+
+          {activeTab === 'reset' && (
+            /* TAB 3: KOSONGKAN TRANSAKSI & RESET STOK (CUSTOMER & USER TETAP AMAN) */
+            <div className="space-y-4">
+              {/* Informative Header Banner */}
+              <div className="p-4 bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300 rounded-2xl space-y-3 shadow-2xs">
+                <div className="flex items-center gap-2 font-black text-sm text-amber-950">
+                  <RotateCcw className="w-4 h-4 text-rose-600" />
+                  <span>Kosongkan Transaksi &amp; Reset Stok ke 0 (Mulai dari Awal)</span>
+                </div>
+                <p className="text-xs text-amber-950 leading-relaxed font-medium">
+                  Fitur ini dirancang khusus untuk Anda yang ingin <strong>memulai awal baru</strong> (reset operasional penjualan &amp; stok) tanpa kehilangan data master penting yang sudah diinput sebelumnya.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-white/90 border border-rose-200 space-y-1 text-rose-950 shadow-2xs">
+                    <p className="font-bold text-rose-800 flex items-center gap-1">
+                      <span>🗑️ Data yang Dikosongkan:</span>
+                    </p>
+                    <ul className="space-y-0.5 text-gray-700 pl-1">
+                      <li>• Seluruh pesanan / order delivery</li>
+                      <li>• Riwayat kas tunai &amp; setoran COD kurir</li>
+                      <li>• Riwayat trip canvas kurir keliling</li>
+                      <li>• Riwayat belanja masuk supplier (inbound)</li>
+                      <li>• Log mutasi &amp; histori stok</li>
+                      <li>• <strong>Angka stok fisik barang di-reset ke 0 kg</strong></li>
+                    </ul>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/90 border border-emerald-200 space-y-1 text-emerald-950 shadow-2xs">
+                    <p className="font-bold text-emerald-800 flex items-center gap-1">
+                      <span>🛡️ Data yang 100% AMAN (TIDAK Dihapus):</span>
+                    </p>
+                    <ul className="space-y-0.5 text-gray-700 pl-1">
+                      <li>• <strong>Data Calon &amp; Pelanggan CRM</strong> (Tetap utuh)</li>
+                      <li>• <strong>Akun Pengguna Tim</strong> (Owner, Manager, Sales, Kurir)</li>
+                      <li>• Master Wilayah (Zone &amp; Kelurahan)</li>
+                      <li>• Master Kategori &amp; Jenis Usaha</li>
+                      <li>• Master Nama Komoditas &amp; Katalog Buah Cepat</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Execution Method 1: In-App 1-Click Action */}
+              <div className="p-4 bg-white border border-gray-200 rounded-2xl shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 uppercase tracking-wide">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                      Metode 1: Eksekusi Otomatis Langsung (1-Klik)
+                    </h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      Berlaku baik menggunakan database Supabase Cloud maupun penyimpanan lokal.
+                    </p>
+                  </div>
+                </div>
+
+                {resetSuccessMessage && (
+                  <div className="p-3.5 bg-emerald-50 border-2 border-emerald-400 rounded-xl space-y-2 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs sm:text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Data Transaksi Berhasil Dikosongkan!</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
+                      {resetSuccessMessage}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        window.location.reload();
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-2xs transition cursor-pointer"
+                    >
+                      Tutup &amp; Segarkan Tampilan
+                    </button>
+                  </div>
+                )}
+
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-2">
+                  <p className="text-[11px] text-gray-700 font-medium">
+                    Ketik kata <strong className="text-rose-700 select-all font-mono uppercase bg-rose-50 px-1 py-0.5 rounded border border-rose-200">KOSONGKAN</strong> di bawah ini untuk mengonfirmasi:
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmPhrase}
+                    onChange={(e) => setConfirmPhrase(e.target.value.toUpperCase())}
+                    placeholder="Ketik KOSONGKAN"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-xs font-mono font-bold tracking-widest uppercase focus:ring-2 focus:ring-rose-500 outline-hidden"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleResetTransactions}
+                  disabled={confirmPhrase.trim().toUpperCase() !== 'KOSONGKAN' || isResettingTransactions}
+                  className={`w-full py-3 px-4 font-bold text-xs sm:text-sm rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
+                    confirmPhrase.trim().toUpperCase() === 'KOSONGKAN' && !isResettingTransactions
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-200'
+                      : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                  }`}
+                >
+                  {isResettingTransactions ? (
+                    <>
+                      <span className="inline-block animate-spin mr-1">⟳</span> Memproses Pengosongan Data...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-4 h-4" />
+                      Kosongkan Transaksi &amp; Reset Stok Sekarang
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Execution Method 2: Supabase Cloud SQL Script */}
+              <div className="p-4 bg-white border border-gray-200 rounded-2xl shadow-2xs space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 uppercase tracking-wide">
+                      <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                      Metode 2: Skrip SQL Khusus Supabase (SQL Editor)
+                    </h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      Jika Anda ingin menjalankan TRUNCATE langsung di dashboard Supabase.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={copyResetSqlToClipboard}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer shrink-0"
+                  >
+                    {isResetSqlCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{isResetSqlCopied ? 'Skrip Disalin!' : 'Salin Skrip SQL Reset'}</span>
+                  </button>
+                </div>
+
+                <pre className="p-3 bg-gray-950 text-amber-300 font-mono text-[10px] sm:text-[11px] rounded-xl overflow-x-auto max-h-48 leading-relaxed border border-gray-800 shadow-inner select-all">
+                  {supabaseResetTransactionsSql}
+                </pre>
+              </div>
+
+              {/* Factory Wipe (Discreet Secondary) */}
+              <div className="pt-2 border-t border-gray-200 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowFactoryResetWarning(!showFactoryResetWarning)}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 underline cursor-pointer"
+                >
+                  {showFactoryResetWarning ? 'Sembunyikan Opsi Reset Total Demo' : 'Opsi Lanjutan: Reset Total ke Demo Bawaan Pabrik (Hapus Semuanya)'}
+                </button>
+
+                {showFactoryResetWarning && (
+                  <div className="mt-2 p-3 bg-rose-50 border border-rose-200 rounded-xl text-left space-y-2 animate-in fade-in">
+                    <p className="text-[11px] text-rose-900 leading-snug">
+                      <strong>PERINGATAN:</strong> Tombol di bawah ini akan menghapus SELURUH data termasuk pelanggan dan user kustom, lalu mengembalikan data dummy demo bawaan. Hanya gunakan jika Anda sengaja ingin mereset aplikasi secara total.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleResetData}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                    >
+                      Reset Total ke Demo Pabrik
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

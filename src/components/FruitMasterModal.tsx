@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Boxes, Sparkles } from 'lucide-react';
+import { X, Check, Boxes, Sparkles, Trash2 } from 'lucide-react';
 import { StockItem } from '../types';
 import { db } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
@@ -33,8 +33,28 @@ export const FruitMasterModal: React.FC<FruitMasterModalProps> = ({
   const [emoji, setEmoji] = useState('🍊');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleDeleteThisFruit = async () => {
+    if (!editItem || !currentUser) return;
+    setIsDeleting(true);
+    try {
+      await db.deleteStockItem(editItem.id, currentUser);
+      success(`Buah "${editItem.fruit_name}" berhasil dihapus dari master katalog.`);
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      toastError(err.message || 'Gagal menghapus buah.');
+    } finally {
+      setIsDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
+      setConfirmDelete(false);
       if (editItem) {
         setFruitName(editItem.fruit_name);
         setUnit(editItem.unit);
@@ -73,6 +93,7 @@ export const FruitMasterModal: React.FC<FruitMasterModalProps> = ({
           {
             fruit_name: fruitName.trim(),
             unit: unit.trim(),
+            current_stock: Math.max(0, Number(initialStock) || 0),
             avg_cost_price: Number(avgCostPrice) || 0,
             latest_selling_price: Number(latestSellingPrice) || 0,
             min_stock_alert: Number(minStockAlert) || 0,
@@ -192,26 +213,26 @@ export const FruitMasterModal: React.FC<FruitMasterModalProps> = ({
             </div>
           </div>
 
-          {/* Stok Awal (only for new) */}
-          {!editItem && (
-            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
-              <label className="block text-xs font-bold text-emerald-900 uppercase">
-                Stok Awal Fisik di Gudang ({unit})
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={initialStock}
-                onChange={(e) => setInitialStock(Number(e.target.value))}
-                placeholder="0"
-                className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm font-mono font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-500 outline-hidden"
-              />
-              <p className="text-[11px] text-emerald-700">
-                Stok awal akan dicatat ke buku mutasi audit secara otomatis.
-              </p>
-            </div>
-          )}
+          {/* Stok Fisik Gudang */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
+            <label className="block text-xs font-bold text-emerald-900 uppercase">
+              {editItem ? `Stok Fisik di Gudang Utama (${unit})` : `Stok Awal Fisik di Gudang (${unit})`}
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={initialStock}
+              onChange={(e) => setInitialStock(Number(e.target.value))}
+              placeholder="0"
+              className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm font-mono font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-500 outline-hidden"
+            />
+            <p className="text-[11px] text-emerald-700">
+              {editItem
+                ? 'Ubah angka stok fisik ini langsung jika ada koreksi atau selisih fisik gudang.'
+                : 'Stok awal akan dicatat ke buku mutasi audit secara otomatis.'}
+            </p>
+          </div>
 
           {/* Harga Modal & Harga Jual Acuan */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -270,23 +291,61 @@ export const FruitMasterModal: React.FC<FruitMasterModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer disabled:opacity-50"
-            >
-              <Check className="w-4 h-4" />
-              <span>{isSubmitting ? 'Menyimpan...' : editItem ? 'Simpan Perubahan' : 'Tambah Buah'}</span>
-            </button>
+          <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+            <div>
+              {editItem && (
+                confirmDelete ? (
+                  <div className="flex items-center gap-1.5 bg-rose-50 p-1 rounded-xl border border-rose-200">
+                    <span className="text-[11px] font-bold text-rose-800 px-1">Yakin hapus?</span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteThisFruit}
+                      disabled={isDeleting}
+                      className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                    >
+                      {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      disabled={isDeleting}
+                      className="px-2 py-1 text-gray-600 hover:text-gray-900 text-xs font-medium cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition cursor-pointer border border-rose-200"
+                    title="Hapus komoditas buah ini dari master katalog"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Buah</span>
+                  </button>
+                )
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting || isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || isDeleting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer disabled:opacity-50"
+              >
+                <Check className="w-4 h-4" />
+                <span>{isSubmitting ? 'Menyimpan...' : editItem ? 'Simpan Perubahan' : 'Tambah Buah'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

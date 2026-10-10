@@ -147,6 +147,8 @@ export interface Order {
   delivery_date: string; // YYYY-MM-DD
   courier_id?: string | null; // Assigned courier (can be dedicated courier, or multi-role staff like sales/manager/owner)
   courier_name?: string | null;
+  sales_id?: string | null;
+  sales_rep?: string | null;
   customer_notes?: string | null;
   delivery_notes?: string | null;
   delivered_at?: string | null;
@@ -154,6 +156,7 @@ export interface Order {
   courier_remittance_status?: RemittanceStatus; // 'Belum Disetor (Ada di Kurir)' | 'Sudah Disetor ke Kas'
   courier_remitted_at?: string | null;
   courier_remitted_by_name?: string | null;
+  stock_deducted?: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;

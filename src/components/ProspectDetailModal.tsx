@@ -24,8 +24,10 @@ import {
   AlertTriangle,
   ShoppingBag,
   Sparkles,
+  Navigation,
 } from 'lucide-react';
 import { MapView } from './MapView';
+import { CustomerLocationModal } from './CustomerLocationModal';
 
 interface ProspectDetailModalProps {
   isOpen: boolean;
@@ -56,6 +58,7 @@ export const ProspectDetailModal: React.FC<ProspectDetailModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [currentProspect, setCurrentProspect] = useState<Prospect | null>(prospect);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
 
   useEffect(() => {
     setCurrentProspect(prospect);
@@ -237,31 +240,61 @@ export const ProspectDetailModal: React.FC<ProspectDetailModalProps> = ({
             </p>
           </div>
 
-          {/* Interactive Map & GPS Section */}
+          {/* Interactive Map & GPS Section - Clickable to analyze route & coordinates */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-emerald-600" />
-                Lokasi GPS & Peta Interaktif
-              </span>
-              {currentProspect.latitude != null && currentProspect.longitude != null && (
-                <span className="text-[11px] text-gray-500 font-mono">
-                  Waktu GPS:{' '}
-                  {currentProspect.gps_captured_at
-                    ? new Date(currentProspect.gps_captured_at).toLocaleString('id-ID')
-                    : '-'}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(true)}
+                className="text-xs font-bold text-gray-700 hover:text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition text-left"
+                title="Buka Peta Interaktif & Analisa Titik Sebelum Berangkat"
+              >
+                <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Lokasi GPS &amp; Peta Interaktif</span>
+                <span className="text-[10px] text-emerald-700 normal-case font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  🎯 Klik Analisa Titik
                 </span>
-              )}
+              </button>
+              
+              <div className="flex items-center gap-2">
+                {currentProspect.latitude != null && currentProspect.longitude != null && (
+                  <span className="text-[11px] text-gray-500 font-mono hidden sm:inline">
+                    Waktu GPS:{' '}
+                    {currentProspect.gps_captured_at
+                      ? new Date(currentProspect.gps_captured_at).toLocaleString('id-ID')
+                      : '-'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsLocationModalOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-2xs transition cursor-pointer"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  <span>Analisa Titik &amp; Rute</span>
+                </button>
+              </div>
             </div>
 
-            <MapView
-              latitude={currentProspect.latitude}
-              longitude={currentProspect.longitude}
-              businessName={currentProspect.business_name}
-              address={currentProspect.address}
-              heightClass="h-56"
-              interactive={true}
-            />
+            <div
+              onClick={() => setIsLocationModalOpen(true)}
+              className="cursor-pointer group relative rounded-xl overflow-hidden"
+              title="Klik untuk membuka peta satelit, analisa titik rute, dan kunci GPS"
+            >
+              <MapView
+                latitude={currentProspect.latitude}
+                longitude={currentProspect.longitude}
+                businessName={currentProspect.business_name}
+                address={currentProspect.address}
+                heightClass="h-56"
+                interactive={false}
+              />
+              <div className="absolute inset-0 bg-emerald-950/0 group-hover:bg-emerald-950/15 transition flex items-center justify-center pointer-events-none">
+                <span className="opacity-0 group-hover:opacity-100 transition px-3.5 py-1.5 bg-emerald-900/90 text-white text-xs font-bold rounded-xl shadow-lg backdrop-blur-xs flex items-center gap-1.5">
+                  <Navigation className="w-4 h-4 text-emerald-300" /> Buka Analisa Titik Peta Lengkap
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Catatan (Optional) */}
@@ -401,6 +434,19 @@ export const ProspectDetailModal: React.FC<ProspectDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Interactive Map Modal for Point Analysis */}
+      {isLocationModalOpen && currentProspect && (
+        <CustomerLocationModal
+          isOpen={isLocationModalOpen}
+          onClose={() => setIsLocationModalOpen(false)}
+          prospect={currentProspect}
+          onLocationUpdated={(updated) => {
+            setCurrentProspect(updated);
+            onStatusChanged();
+          }}
+        />
+      )}
     </div>
   );
 };

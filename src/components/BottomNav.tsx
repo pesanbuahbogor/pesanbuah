@@ -25,7 +25,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
     { id: 'prospects', label: 'CRM', icon: Users, visible: !isCourierOnly },
     { id: 'inventory', label: 'Inventory', icon: Boxes, visible: isOwner || isManager },
     { id: 'orders', label: isCourierOnly ? 'Delivery' : 'Order Delivery', icon: isCourierOnly ? Truck : ShoppingBag, visible: true },
-    { id: 'order_reports', label: 'Report', icon: BarChart3, visible: !isCourierOnly },
+    { id: 'order_reports', label: 'Report', icon: BarChart3, visible: isOwner || isManager },
     { id: 'user_management', label: 'User', icon: ShieldCheck, visible: isOwner },
   ].filter((item) => item.visible);
 

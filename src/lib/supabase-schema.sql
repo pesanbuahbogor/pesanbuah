@@ -164,9 +164,15 @@ CREATE TABLE IF NOT EXISTS public.stock_items (
     canvas_allocated_stock NUMERIC NOT NULL DEFAULT 0,
     min_stock_alert NUMERIC NOT NULL DEFAULT 10,
     avg_cost_price NUMERIC NOT NULL DEFAULT 0,
+    latest_selling_price NUMERIC NOT NULL DEFAULT 0,
+    emoji TEXT DEFAULT '🍊',
     notes TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS latest_selling_price NUMERIC DEFAULT 0;
+ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS emoji TEXT DEFAULT '🍊';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN DEFAULT FALSE;
 
 -- 12. TABEL STOCK INBOUNDS (Riwayat Kulakan / Belanja Supplier)
 CREATE TABLE IF NOT EXISTS public.stock_inbounds (
