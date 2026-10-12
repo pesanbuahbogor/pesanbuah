@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import { Profile, QuickFruitItem, StockInbound } from '../types';
 import { db } from '../lib/db';
@@ -38,6 +39,9 @@ export const StockInboundModal: React.FC<StockInboundModalProps> = ({
 
   const [purchaseDate, setPurchaseDate] = useState(formatDateIso(new Date()));
   const [fruitName, setFruitName] = useState('');
+  const [fruitList, setFruitList] = useState<QuickFruitItem[]>(fruits);
+  const [fruitToDelete, setFruitToDelete] = useState<QuickFruitItem | null>(null);
+  const [isDeletingFruit, setIsDeletingFruit] = useState(false);
   const [supplierName, setSupplierName] = useState('');
   const [buyerId, setBuyerId] = useState(currentUser?.id || '');
   const [grossPurchaseQty, setGrossPurchaseQty] = useState<number | ''>(50);
@@ -54,6 +58,10 @@ export const StockInboundModal: React.FC<StockInboundModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
+    setFruitList(fruits);
+  }, [fruits]);
+
+  React.useEffect(() => {
     if (isOpen) {
       if (fruits.length > 0 && !fruitName) {
         setFruitName(fruits[0].name);
@@ -63,6 +71,32 @@ export const StockInboundModal: React.FC<StockInboundModalProps> = ({
       }
     }
   }, [isOpen, fruits, currentUser]);
+
+  const confirmDeleteFruit = async () => {
+    if (!fruitToDelete) return;
+    setIsDeletingFruit(true);
+    try {
+      const activeUser = currentUser || ({ id: 'usr-owner-001', name: 'Owner', role: 'Owner' } as Profile);
+      await db.deleteQuickFruit(fruitToDelete.id, activeUser);
+      setFruitList((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== fruitToDelete.id &&
+            item.name.toLowerCase().trim() !== fruitToDelete.name.toLowerCase().trim()
+        )
+      );
+      if (fruitName.toLowerCase().trim() === fruitToDelete.name.toLowerCase().trim()) {
+        setFruitName('');
+      }
+      success(`Buah "${fruitToDelete.name}" berhasil dihapus dari katalog.`);
+      setFruitToDelete(null);
+      onSaved();
+    } catch (err: any) {
+      toastError(err.message || 'Gagal menghapus buah.');
+    } finally {
+      setIsDeletingFruit(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -225,34 +259,107 @@ export const StockInboundModal: React.FC<StockInboundModalProps> = ({
 
             {/* Buah yang Dibelanja */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                Pilih Buah yang Dibeli *
-              </label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {fruits.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setFruitName(f.name)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 border ${
-                      fruitName.toLowerCase() === f.name.toLowerCase()
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50'
-                    }`}
-                  >
-                    <span>{f.emoji || '🍊'}</span>
-                    <span>{f.name}</span>
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-gray-700">
+                  Pilih Buah yang Dibeli *
+                </label>
+                {fruitName && (
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const matchedItem = fruitList.find(
+                        (f) => f.name.toLowerCase().trim() === fruitName.toLowerCase().trim()
+                      );
+                      if (matchedItem) {
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setFruitToDelete(matchedItem)}
+                            className="text-[11px] text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 transition cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg border border-rose-200"
+                            title={`Hapus "${matchedItem.name}" dari katalog karena data lama/tidak valid`}
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Hapus Buah Ini</span>
+                          </button>
+                        );
+                      }
+                      return null;
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => setFruitName('')}
+                      className="text-[11px] text-gray-400 hover:text-rose-600 font-semibold transition cursor-pointer"
+                    >
+                      Bersihkan Pilihan
+                    </button>
+                  </div>
+                )}
               </div>
-              <input
-                type="text"
-                required
-                value={fruitName}
-                onChange={(e) => setFruitName(e.target.value)}
-                placeholder="Atau ketik nama buah baru (misal: Jeruk Siam Madu)"
-                className="w-full h-10 px-3 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-hidden"
-              />
+
+              {fruitList.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {fruitList.map((f) => {
+                    const isSelected =
+                      fruitName.toLowerCase().trim() === f.name.toLowerCase().trim();
+                    return (
+                      <div
+                        key={f.id}
+                        className={`inline-flex items-center rounded-lg text-xs font-semibold transition border shadow-2xs ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setFruitName(f.name)}
+                          className="px-2.5 py-1.5 flex items-center gap-1 cursor-pointer select-none"
+                          title={`Pilih ${f.name}`}
+                        >
+                          <span>{f.emoji || '🍊'}</span>
+                          <span>{f.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFruitToDelete(f);
+                          }}
+                          className={`pr-2.5 pl-1 py-1.5 transition cursor-pointer flex items-center justify-center ${
+                            isSelected
+                              ? 'text-white/80 hover:text-white hover:bg-rose-600'
+                              : 'text-gray-400 hover:text-rose-600 hover:bg-rose-50'
+                          } rounded-r-lg border-l ${isSelected ? 'border-emerald-500' : 'border-gray-200'}`}
+                          title={`Hapus "${f.name}" dari katalog (data lama / tidak valid)`}
+                          aria-label={`Hapus ${f.name} dari katalog`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={fruitName}
+                  onChange={(e) => setFruitName(e.target.value)}
+                  placeholder="Atau ketik nama buah baru (misal: Jeruk Siam Madu)"
+                  className="w-full h-10 pl-3 pr-8 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                />
+                {fruitName && (
+                  <button
+                    type="button"
+                    onClick={() => setFruitName('')}
+                    className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    title="Kosongkan nama buah"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Timbangan Awal & Harga Beli */}
@@ -465,6 +572,58 @@ export const StockInboundModal: React.FC<StockInboundModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Modal Konfirmasi Hapus Item Buah */}
+      {fruitToDelete && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 border border-rose-100 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">
+                  Hapus Buah dari Katalog?
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Data lama / tidak valid akan dihapus permanen
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-3 text-xs text-rose-900 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{fruitToDelete.emoji || '🍊'}</span>
+                <span className="font-bold text-gray-900 text-sm">{fruitToDelete.name}</span>
+                <span className="text-xs text-gray-500">({fruitToDelete.unit})</span>
+              </div>
+              <p className="text-[11px] text-gray-600">
+                Item ini akan dihapus dari pilihan cepat belanja dan master katalog stok gudang.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                disabled={isDeletingFruit}
+                onClick={() => setFruitToDelete(null)}
+                className="px-3.5 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingFruit}
+                onClick={confirmDeleteFruit}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {isDeletingFruit ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

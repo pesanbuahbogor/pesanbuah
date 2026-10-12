@@ -40,7 +40,7 @@ import {
   RefreshCw,
   Lock,
 } from 'lucide-react';
-import { Order, OrderStatus, DeliverySlot, Profile, Zone, Prospect, CanvasTrip } from '../types';
+import { Order, OrderStatus, DeliverySlot, Profile, Zone, Prospect, CanvasTrip, StockItem } from '../types';
 import { db } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
@@ -67,6 +67,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   const [zones, setZones] = useState<Zone[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [canvasTrips, setCanvasTrips] = useState<CanvasTrip[]>([]);
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncedTime, setLastSyncedTime] = useState<Date>(new Date());
@@ -221,18 +222,20 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [ordersData, profilesData, zonesData, prospectsData, canvasTripsData] = await Promise.all([
+      const [ordersData, profilesData, zonesData, prospectsData, canvasTripsData, stockItemsData] = await Promise.all([
         db.getOrders(currentUser),
         db.getProfiles(),
         db.getZones(),
         db.getProspects(currentUser),
         db.getCanvasTrips(currentUser),
+        db.getStockItems(),
       ]);
       setOrders(ordersData);
       setProfiles(profilesData);
       setZones(zonesData);
       setProspects(prospectsData);
       setCanvasTrips(canvasTripsData);
+      setStockItems(stockItemsData);
     } catch (err: any) {
       toastError(err.message || 'Gagal memuat data order.');
     } finally {
@@ -304,16 +307,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   // (Dedicated Kurir has access to orders assigned to him/her, plus active unassigned orders waiting to be delivered)
   // (Sales ONLY has access to orders created by or assigned to him/her)
   const accessibleOrders = useMemo(() => {
-    if (isCourierOnly) {
+    if (isCourierOnly || currentUser?.role === 'Kurir') {
       return orders.filter((o) => {
         const isMyDelivery =
           o.courier_id === currentUser?.id ||
           (o.courier_name && currentUser?.name && o.courier_name.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
         if (isMyDelivery) return true;
-        // Kurir can also view active unassigned orders (Diterima or Disiapkan) to handle them
-        const isAvailableToHandle =
-          (!o.courier_id || o.courier_id === '') &&
-          (o.status === 'Diterima' || o.status === 'Disiapkan');
+        // Kurir can also view all active orders (Diterima, Disiapkan, or Sedang Diantar) to handle them
+        const isAvailableToHandle = o.status === 'Diterima' || o.status === 'Disiapkan' || o.status === 'Sedang Diantar';
         return isAvailableToHandle;
       });
     }
@@ -365,9 +366,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         }
       }
 
-      // Date Range
+      // Date Range: active deliveries (Diterima, Disiapkan, Sedang Diantar) are never hidden when viewing today
       if (filterDateRange === 'today') {
-        if (order.delivery_date !== todayStr) return false;
+        const isActiveOrder = order.status === 'Diterima' || order.status === 'Disiapkan' || order.status === 'Sedang Diantar';
+        if (!isActiveOrder && order.delivery_date !== todayStr) return false;
       } else if (filterDateRange === 'tomorrow') {
         if (order.delivery_date !== tomorrowStr) return false;
       } else if (filterDateRange === 'week') {
@@ -616,26 +618,34 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
 
   const handleQuickStatusChange = async (order: Order, newStatus: OrderStatus) => {
     if (!currentUser) return;
+    if (newStatus === 'Selesai') {
+      setCompletionOrder(order);
+      return;
+    }
     try {
       const updates: Partial<Order> = { status: newStatus };
       // If courier (or user with courier role) is taking or delivering the order,
-      // automatically assign order to this courier if not yet assigned
-      if ((isCourierOnly || currentUser.role === 'Kurir') && (!order.courier_id || order.courier_id !== currentUser.id)) {
-        updates.courier_id = currentUser.id;
-        updates.courier_name = currentUser.name;
+      // automatically assign order to this courier
+      if (isCourierOnly || currentUser.role === 'Kurir' || currentUser.is_courier) {
+        if (!order.courier_id || order.courier_id === currentUser.id) {
+          updates.courier_id = currentUser.id;
+          updates.courier_name = currentUser.name;
+        }
       }
+      // Instant optimistic local state update for zero latency
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, ...updates } : o)));
+
       await db.updateOrder(order.id, updates, currentUser);
       success(`Status Order #${order.order_number} berhasil diubah menjadi "${newStatus}"!`);
       // If user is currently filtering by previous status, auto-switch to new status tab so order remains visible
-      if (filterStatus === 'Disiapkan' && newStatus === 'Sedang Diantar') {
-        setFilterStatus('Sedang Diantar');
-      } else if (filterStatus === 'Diterima' && newStatus === 'Disiapkan') {
-        setFilterStatus('Disiapkan');
+      if (filterStatus === order.status) {
+        setFilterStatus(newStatus);
       }
       await loadData();
     } catch (err: any) {
       console.error('Error changing order status:', err);
       toastError(err.message || 'Gagal mengubah status.');
+      await loadData();
     }
   };
 
@@ -1278,6 +1288,20 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                       <span>WA</span>
                     </a>
 
+                    {/* Status Dropdown Selector */}
+                    <select
+                      value={order.status}
+                      onChange={(e) => handleQuickStatusChange(order, e.target.value as OrderStatus)}
+                      className="px-1.5 py-1 bg-white border border-gray-300 hover:border-emerald-500 rounded-lg text-[10px] sm:text-[11px] font-bold text-gray-800 outline-hidden cursor-pointer shadow-2xs"
+                      title="Ubah status order langsung"
+                    >
+                      <option value="Diterima">Diterima</option>
+                      <option value="Disiapkan">Disiapkan</option>
+                      <option value="Sedang Diantar">Sedang Diantar</option>
+                      <option value="Selesai">Selesai</option>
+                      <option value="Dibatalkan">Dibatalkan</option>
+                    </select>
+
                     {/* 1-Tap Advance Order Status Button */}
                     {order.status === 'Diterima' && (
                       <button
@@ -1459,6 +1483,20 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                       <Phone className="w-3 h-3" />
                       <span>WA</span>
                     </a>
+
+                    {/* Status Dropdown Selector */}
+                    <select
+                      value={order.status}
+                      onChange={(e) => handleQuickStatusChange(order, e.target.value as OrderStatus)}
+                      className="px-2 py-1.5 bg-white border border-gray-300 hover:border-emerald-500 rounded-lg text-xs font-bold text-gray-800 outline-hidden cursor-pointer shadow-2xs"
+                      title="Ubah status order langsung"
+                    >
+                      <option value="Diterima">1. Diterima</option>
+                      <option value="Disiapkan">2. Disiapkan</option>
+                      <option value="Sedang Diantar">3. Sedang Diantar</option>
+                      <option value="Selesai">4. Selesai</option>
+                      <option value="Dibatalkan">5. Dibatalkan</option>
+                    </select>
 
                     {/* 1-Tap Advance Order Status Button */}
                     {order.status === 'Diterima' && (

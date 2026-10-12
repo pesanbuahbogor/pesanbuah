@@ -45,30 +45,38 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
   const [tripDate, setTripDate] = useState(formatDateIso(new Date()));
   const [courierId, setCourierId] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<CanvasDraftItem[]>([
-    {
-      fruit_name: stockItems[0]?.fruit_name || 'Jeruk Medan Manis',
-      unit: stockItems[0]?.unit || 'kg',
-      brought_qty: 10,
-      selling_price: stockItems[0]?.latest_selling_price || 28000,
-    },
-  ]);
+  const [items, setItems] = useState<CanvasDraftItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
     if (isOpen) {
-      if (couriers.length > 0 && !courierId) {
+      if (couriers.length > 0 && (!courierId || !couriers.some((c) => c.id === courierId))) {
         setCourierId(couriers[0].id);
       }
-      if (stockItems.length > 0 && items.length === 1 && !items[0].fruit_name) {
-        setItems([
-          {
-            fruit_name: stockItems[0].fruit_name,
-            unit: stockItems[0].unit,
-            brought_qty: 10,
-            selling_price: stockItems[0].latest_selling_price || 28000,
-          },
-        ]);
+
+      if (stockItems.length > 0) {
+        const availableItems = stockItems.filter((s) => s.current_stock > 0);
+        const bestStock = availableItems.length > 0 ? availableItems[0] : stockItems[0];
+        const initialQty = bestStock && bestStock.current_stock > 0 ? Math.min(5, bestStock.current_stock) : 0;
+
+        setItems((prev) => {
+          const validNames = new Set(stockItems.map((s) => s.fruit_name.toLowerCase().trim()));
+          const hasInvalid =
+            prev.length === 0 ||
+            prev.some((it) => !it.fruit_name || !validNames.has(it.fruit_name.toLowerCase().trim()));
+
+          if (hasInvalid) {
+            return [
+              {
+                fruit_name: bestStock.fruit_name,
+                unit: bestStock.unit,
+                brought_qty: initialQty,
+                selling_price: bestStock.latest_selling_price || 0,
+              },
+            ];
+          }
+          return prev;
+        });
       }
     }
   }, [isOpen, couriers, stockItems]);
@@ -76,14 +84,22 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
   if (!isOpen) return null;
 
   const handleAddItem = () => {
-    const firstAvailable = stockItems[0];
+    const availableItems = stockItems.filter((s) => s.current_stock > 0);
+    const chosenNames = new Set(items.map((i) => i.fruit_name.toLowerCase().trim()));
+    const unchosen = availableItems.find((s) => !chosenNames.has(s.fruit_name.toLowerCase().trim()));
+    const best = unchosen || availableItems[0] || stockItems[0];
+    if (!best) {
+      toastError('Tidak ada komoditas buah dalam stok gudang.');
+      return;
+    }
+    const initialQty = best.current_stock > 0 ? Math.min(5, best.current_stock) : 0;
     setItems((prev) => [
       ...prev,
       {
-        fruit_name: firstAvailable?.fruit_name || 'Jeruk Peras Segar',
-        unit: firstAvailable?.unit || 'kg',
-        brought_qty: 5,
-        selling_price: firstAvailable?.latest_selling_price || 18000,
+        fruit_name: best.fruit_name,
+        unit: best.unit,
+        brought_qty: initialQty,
+        selling_price: best.latest_selling_price || 0,
       },
     ]);
   };
@@ -97,14 +113,25 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
   };
 
   const handleFruitSelect = (idx: number, fruitName: string) => {
-    const matched = stockItems.find((s) => s.fruit_name === fruitName);
+    const matched = stockItems.find(
+      (s) =>
+        s.fruit_name.toLowerCase().trim() === fruitName.toLowerCase().trim() ||
+        fruitName.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
+        s.fruit_name.toLowerCase().trim().includes(fruitName.toLowerCase().trim())
+    );
     setItems((prev) => {
       const next = [...prev];
+      const maxAvailable = matched ? matched.current_stock : 0;
+      const currentBrought = Number(next[idx]?.brought_qty) || 0;
+      const clampedBrought =
+        maxAvailable <= 0 ? 0 : Math.min(currentBrought > 0 ? currentBrought : 5, maxAvailable);
+
       next[idx] = {
         ...next[idx],
-        fruit_name: fruitName,
-        unit: matched ? matched.unit : 'kg',
-        selling_price: matched ? matched.latest_selling_price : next[idx].selling_price,
+        fruit_name: matched ? matched.fruit_name : fruitName,
+        unit: matched ? matched.unit : (next[idx]?.unit || 'kg'),
+        selling_price: matched ? matched.latest_selling_price : (next[idx]?.selling_price || 0),
+        brought_qty: clampedBrought,
       };
       return next;
     });
@@ -113,7 +140,31 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
   const handleItemChange = (idx: number, field: keyof CanvasDraftItem, val: any) => {
     setItems((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], [field]: val };
+      if (field === 'brought_qty') {
+        const item = next[idx];
+        const stockAvail = stockItems.find(
+          (s) =>
+            s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim() ||
+            item.fruit_name.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
+            s.fruit_name.toLowerCase().trim().includes(item.fruit_name.toLowerCase().trim())
+        );
+        let numVal = Number(val);
+        if (isNaN(numVal) || numVal < 0) numVal = 0;
+        if (stockAvail) {
+          if (stockAvail.current_stock <= 0) {
+            toastError(`Stok buah "${item.fruit_name}" di gudang habis (0 ${stockAvail.unit}).`);
+            numVal = 0;
+          } else if (numVal > stockAvail.current_stock) {
+            toastError(
+              `Stok buah "${item.fruit_name}" di gudang hanya ${stockAvail.current_stock} ${stockAvail.unit}. Jumlah otomatis dibatasi.`
+            );
+            numVal = stockAvail.current_stock;
+          }
+        }
+        next[idx] = { ...next[idx], brought_qty: numVal };
+      } else {
+        next[idx] = { ...next[idx], [field]: val };
+      }
       return next;
     });
   };
@@ -135,9 +186,22 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
     // Validate quantities against warehouse stock
     for (const item of items) {
       const currentStock = stockItems.find(
-        (s) => s.fruit_name.toLowerCase() === item.fruit_name.toLowerCase()
+        (s) =>
+          s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim() ||
+          item.fruit_name.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
+          s.fruit_name.toLowerCase().trim().includes(item.fruit_name.toLowerCase().trim())
       );
-      if (currentStock && item.brought_qty > currentStock.current_stock) {
+      if (!currentStock || currentStock.current_stock <= 0) {
+        toastError(
+          `Stok "${item.fruit_name}" di gudang sedang habis (0 ${currentStock?.unit || 'kg'}). Tidak dapat dibawa canvas keliling.`
+        );
+        return;
+      }
+      if (Number(item.brought_qty) <= 0) {
+        toastError(`Jumlah bawa untuk "${item.fruit_name}" harus lebih dari 0.`);
+        return;
+      }
+      if (Number(item.brought_qty) > currentStock.current_stock) {
         toastError(
           `Stok "${item.fruit_name}" di gudang hanya tersisa ${currentStock.current_stock} ${currentStock.unit}, tidak cukup untuk bawa ${item.brought_qty} ${item.unit}.`
         );
@@ -252,30 +316,64 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
             <div className="space-y-2.5">
               {items.map((item, idx) => {
                 const stockAvail = stockItems.find(
-                  (s) => s.fruit_name.toLowerCase() === item.fruit_name.toLowerCase()
+                  (s) => s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim()
                 );
+                const isOutOfStock = stockAvail && stockAvail.current_stock <= 0;
+                const isOverStock = stockAvail && stockAvail.current_stock > 0 && Number(item.brought_qty) > stockAvail.current_stock;
 
                 return (
                   <div
                     key={idx}
-                    className="p-3 bg-white rounded-xl border border-gray-200 space-y-2 shadow-2xs"
+                    className={`p-3 bg-white rounded-xl border space-y-2 shadow-2xs transition ${
+                      isOutOfStock || isOverStock ? 'border-rose-400 ring-1 ring-rose-200' : 'border-gray-200'
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                          Pilih Buah #{idx + 1}
-                        </label>
-                        <select
-                          value={item.fruit_name}
-                          onChange={(e) => handleFruitSelect(idx, e.target.value)}
-                          className="w-full h-9 px-2.5 bg-gray-50 border border-gray-300 rounded-lg text-xs sm:text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden cursor-pointer"
-                        >
-                          {stockItems.map((s) => (
-                            <option key={s.id} value={s.fruit_name}>
-                              {s.fruit_name} (Sisa Gudang: {s.current_stock} {s.unit})
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-bold text-gray-700">
+                            Pilih Buah #{idx + 1}
+                          </label>
+                          {stockAvail && (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.2 rounded border ${
+                                isOutOfStock
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                  : isOverStock
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-blue-100 text-blue-800 border-blue-200'
+                              }`}
+                            >
+                              {isOutOfStock
+                                ? `⚠️ Stok Habis (0 ${stockAvail.unit})`
+                                : `Stok: ${stockAvail.current_stock} ${stockAvail.unit}`}
+                            </span>
+                          )}
+                        </div>
+                        {(() => {
+                          const matchedOption = stockItems.find(
+                            (s) =>
+                              s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim() ||
+                              item.fruit_name.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
+                              s.fruit_name.toLowerCase().trim().includes(item.fruit_name.toLowerCase().trim())
+                          );
+                          const activeValue = matchedOption ? matchedOption.fruit_name : (stockItems[0]?.fruit_name || item.fruit_name);
+                          return (
+                            <select
+                              value={activeValue}
+                              onChange={(e) => handleFruitSelect(idx, e.target.value)}
+                              className={`w-full h-9 px-2.5 bg-gray-50 border rounded-lg text-xs sm:text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden cursor-pointer ${
+                                isOutOfStock ? 'border-rose-400' : 'border-gray-300'
+                              }`}
+                            >
+                              {stockItems.map((s) => (
+                                <option key={s.id} value={s.fruit_name} disabled={s.current_stock <= 0}>
+                                  {s.fruit_name} {s.current_stock <= 0 ? `(HABIS - 0 ${s.unit})` : `(Sisa Gudang: ${s.current_stock} ${s.unit})`}
+                                </option>
+                              ))}
+                            </select>
+                          );
+                        })()}
                       </div>
 
                       {items.length > 1 && (
@@ -292,9 +390,16 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 border-t border-gray-100">
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
-                          Jumlah Bawa ({item.unit})
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-bold text-gray-600">
+                            Jumlah Bawa ({item.unit})
+                          </label>
+                          {stockAvail && (
+                            <span className="text-[10px] text-gray-500 font-semibold">
+                              Maks: {stockAvail.current_stock}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center">
                           <button
                             type="button"
@@ -309,29 +414,48 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
                           <input
                             type="number"
                             min="0.1"
+                            max={stockAvail ? stockAvail.current_stock : undefined}
                             step="any"
                             required
+                            disabled={isOutOfStock}
                             value={item.brought_qty}
                             onChange={(e) =>
                               handleItemChange(
                                 idx,
                                 'brought_qty',
-                                Math.max(0.1, Number(e.target.value))
+                                e.target.value
                               )
                             }
-                            className="w-full h-9 bg-white border-y border-gray-300 text-center font-black text-sm text-gray-900 outline-hidden"
+                            className={`w-full h-9 bg-white border-y text-center font-black text-sm outline-hidden ${
+                              isOverStock || isOutOfStock ? 'border-rose-400 text-rose-700 bg-rose-50/50' : 'border-gray-300 text-gray-900'
+                            }`}
                           />
                           <button
                             type="button"
                             onClick={() => {
                               const curr = Number(item.brought_qty) || 0;
-                              handleItemChange(idx, 'brought_qty', curr + 1);
+                              const next = curr + 1;
+                              if (stockAvail && next > stockAvail.current_stock) {
+                                toastError(`Stok gudang hanya tersisa ${stockAvail.current_stock} ${stockAvail.unit}.`);
+                                return;
+                              }
+                              handleItemChange(idx, 'brought_qty', next);
                             }}
                             className="w-8 h-9 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-r-lg font-bold flex items-center justify-center text-sm border border-l-0 border-gray-300 cursor-pointer"
                           >
                             +
                           </button>
                         </div>
+                        {isOutOfStock && (
+                          <p className="text-[10px] font-bold text-rose-600 mt-1">
+                            ⚠️ Stok buah ini habis di gudang (0 {stockAvail?.unit})!
+                          </p>
+                        )}
+                        {isOverStock && (
+                          <p className="text-[10px] font-bold text-rose-600 mt-1">
+                            ⚠️ Melebihi stok gudang! Maks: {stockAvail?.current_stock} {stockAvail?.unit}
+                          </p>
+                        )}
                       </div>
 
                       <div>
