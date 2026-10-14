@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Plus,
@@ -18,6 +18,7 @@ import {
   Settings,
   Navigation,
   Lock,
+  CheckCircle2,
 } from 'lucide-react';
 import { Order, OrderItem, QuickFruitItem, StockItem, DeliverySlot, PaymentMethod, PaymentStatus, OrderStatus, Prospect, Profile, Zone } from '../types';
 import { calculateAutomaticDeliverySlot, formatRupiah, formatDateIso } from '../lib/orderScheduleUtils';
@@ -57,7 +58,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [items, setItems] = useState<OrderItem[]>([
-    { id: 'item-1', item_name: 'Pisang Cavendish Super', quantity: 1, unit: 'dus', price: 185000, subtotal: 185000 },
+    { id: 'item-1', item_name: '', quantity: 1, unit: 'kg', price: 0, subtotal: 0 },
   ]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Tunai');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Belum Lunas');
@@ -74,7 +75,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
   // Fruit catalog & warehouse stock management states
   const [customFruits, setCustomFruits] = useState<QuickFruitItem[]>([]);
-  const [warehouseStock, setWarehouseStock] = useState<StockItem[]>(propStockItems || []);
+  const [warehouseStock, setWarehouseStock] = useState<StockItem[]>(
+    propStockItems && propStockItems.length > 0 ? propStockItems : []
+  );
   const [isManageFruitsModalOpen, setIsManageFruitsModalOpen] = useState(false);
 
   useEffect(() => {
@@ -89,81 +92,198 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         db.getQuickFruits(),
         db.getStockItems(),
       ]);
-      setCustomFruits(fruits);
-      setWarehouseStock(stocks);
+      setCustomFruits(fruits || []);
+      if (stocks && stocks.length > 0) {
+        setWarehouseStock(stocks);
+      } else if (propStockItems && propStockItems.length > 0) {
+        setWarehouseStock(propStockItems);
+      } else {
+        setWarehouseStock([]);
+      }
     } catch {
-      // fallback
+      if (propStockItems && propStockItems.length > 0) {
+        setWarehouseStock(propStockItems);
+      } else {
+        setWarehouseStock([]);
+      }
     }
   };
 
-  // Searchable customer dropdown states
+  // Unified list of inventory fruits for quick selection chips
+  const inventoryFruitChips = useMemo(() => {
+    const list: { id: string; name: string; unit: string; price: number; emoji: string; stock: number }[] = [];
+    const seen = new Set<string>();
+
+    for (const s of warehouseStock) {
+      const key = s.fruit_name.toLowerCase().trim();
+      seen.add(key);
+      const cf = customFruits.find((f) => f.name.toLowerCase().trim() === key);
+      list.push({
+        id: s.id,
+        name: s.fruit_name,
+        unit: s.unit || 'kg',
+        price: s.latest_selling_price || cf?.price || 0,
+        emoji: s.emoji || cf?.emoji || '🍊',
+        stock: s.current_stock,
+      });
+    }
+
+    for (const f of customFruits) {
+      if (f.is_active !== false) {
+        const key = f.name.toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            id: f.id,
+            name: f.name,
+            unit: f.unit || 'kg',
+            price: f.price || 0,
+            emoji: f.emoji || '🍊',
+            stock: 0,
+          });
+        }
+      }
+    }
+
+    return list;
+  }, [warehouseStock, customFruits]);
+
+  // Searchable customer dropdown states & refs
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [showAllChips, setShowAllChips] = useState(false);
+  const [allProspects, setAllProspects] = useState<Prospect[]>(prospects || []);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  const isInitializedRef = useRef(false);
 
+  // Sync prospects or fetch all CRM customers if parent prop is empty
+  useEffect(() => {
+    if (isOpen) {
+      if (prospects && prospects.length > 0) {
+        setAllProspects(prospects);
+      } else {
+        db.getAllProspects()
+          .then((list) => {
+            if (list && list.length > 0) setAllProspects(list);
+          })
+          .catch(() => {});
+      }
+    }
+  }, [isOpen, prospects]);
+
+  // Click-outside handler for customer search dropdown (no blocking screen overlay)
+  useEffect(() => {
+    if (!isCustomerDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (
+        customerDropdownRef.current &&
+        !customerDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsCustomerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isCustomerDropdownOpen]);
+
+  // Form field initialization: ONLY runs once when modal opens, NEVER on async stock updates
   useEffect(() => {
     if (isOpen) {
       loadStockAndFruits();
-      if (editOrder) {
-        setSelectedProspectId(editOrder.prospect_id || '');
-        setCustomerName(editOrder.customer_name);
-        setCustomerPhone(editOrder.customer_phone);
-        setDeliveryAddress(editOrder.delivery_address);
-        setZoneId(editOrder.zone_id || '');
-        setLatitude(editOrder.latitude ?? null);
-        setLongitude(editOrder.longitude ?? null);
-        setItems(editOrder.order_items && editOrder.order_items.length > 0 ? editOrder.order_items : [
-          { id: 'item-1', item_name: editOrder.items_summary || 'Pesanan Buah', quantity: 1, unit: 'pack', price: editOrder.total_amount, subtotal: editOrder.total_amount }
-        ]);
-        setPaymentMethod(editOrder.payment_method);
-        setPaymentStatus(editOrder.payment_status);
-        setStatus(editOrder.status);
-        setDeliverySlot(editOrder.delivery_slot);
-        setDeliveryDate(editOrder.delivery_date);
-        setCourierId(editOrder.courier_id || '');
-        setCustomerNotes(editOrder.customer_notes || '');
-        setAutoSlotReason('');
-      } else {
-        // Automatically calculate delivery slot by current time!
-        const auto = calculateAutomaticDeliverySlot();
-        setDeliverySlot(auto.slot);
-        setDeliveryDate(auto.deliveryDate);
-        setAutoSlotReason(auto.reason);
+      if (!isInitializedRef.current) {
+        if (editOrder) {
+          setSelectedProspectId(editOrder.prospect_id || '');
+          setCustomerName(editOrder.customer_name);
+          setCustomerPhone(editOrder.customer_phone);
+          setDeliveryAddress(editOrder.delivery_address);
+          setZoneId(editOrder.zone_id || '');
+          setLatitude(editOrder.latitude ?? null);
+          setLongitude(editOrder.longitude ?? null);
+          setItems(editOrder.order_items && editOrder.order_items.length > 0 ? editOrder.order_items : [
+            { id: 'item-1', item_name: editOrder.items_summary || 'Pesanan Buah', quantity: 1, unit: 'pack', price: editOrder.total_amount, subtotal: editOrder.total_amount }
+          ]);
+          setPaymentMethod(editOrder.payment_method);
+          setPaymentStatus(editOrder.payment_status);
+          setStatus(editOrder.status);
+          setDeliverySlot(editOrder.delivery_slot);
+          setDeliveryDate(editOrder.delivery_date);
+          setCourierId(editOrder.courier_id || '');
+          setCustomerNotes(editOrder.customer_notes || '');
+          setAutoSlotReason('');
+        } else {
+          // Automatically calculate delivery slot by current time
+          const auto = calculateAutomaticDeliverySlot();
+          setDeliverySlot(auto.slot);
+          setDeliveryDate(auto.deliveryDate);
+          setAutoSlotReason(auto.reason);
 
-        // Reset
-        setSelectedProspectId('');
-        setCustomerName('');
-        setCustomerPhone('');
-        setDeliveryAddress('');
-        setZoneId('');
-        setLatitude(null);
-        setLongitude(null);
-        setItems([
-          { id: 'item-1', item_name: '', quantity: 1, unit: 'kg', price: 0, subtotal: 0 },
-        ]);
-        setPaymentMethod('Tunai');
-        setPaymentStatus('Belum Lunas');
-        setStatus('Diterima');
-        setCourierId('');
-        setCustomerNotes('');
-        setCustomerSearchQuery('');
-        setIsCustomerDropdownOpen(false);
+          // Reset fields for new order
+          setSelectedProspectId('');
+          setCustomerName('');
+          setCustomerPhone('');
+          setDeliveryAddress('');
+          setZoneId('');
+          setLatitude(null);
+          setLongitude(null);
+          const initialFruit = warehouseStock[0] || (customFruits.length > 0 ? {
+            id: customFruits[0].id,
+            fruit_name: customFruits[0].name,
+            unit: customFruits[0].unit,
+            current_stock: 0,
+            canvas_allocated_stock: 0,
+            min_stock_alert: 10,
+            avg_cost_price: 0,
+            latest_selling_price: customFruits[0].price,
+          } as StockItem : null);
+          setItems([
+            {
+              id: 'item-1',
+              item_name: initialFruit ? initialFruit.fruit_name : '',
+              quantity: 1,
+              unit: initialFruit ? initialFruit.unit : 'kg',
+              price: initialFruit ? (initialFruit.latest_selling_price || 0) : 0,
+              subtotal: initialFruit ? (initialFruit.latest_selling_price || 0) : 0,
+            },
+          ]);
+          setPaymentMethod('Tunai');
+          setPaymentStatus('Belum Lunas');
+          setStatus('Diterima');
+          setCourierId('');
+          setCustomerNotes('');
+          setCustomerSearchQuery('');
+          setIsCustomerDropdownOpen(false);
+        }
+        isInitializedRef.current = true;
       }
+    } else {
+      isInitializedRef.current = false;
+      setIsCustomerDropdownOpen(false);
+      setCustomerSearchQuery('');
     }
-  }, [isOpen, editOrder]);
+  }, [isOpen, editOrder?.id]);
+
+  // Combined prospects list for searching
+  const prospectsSource = allProspects.length > 0 ? allProspects : prospects;
 
   // Filter prospects based on typed search query (business name, PIC, phone, or address)
-  const filteredProspects = prospects.filter((p) => {
-    if (!customerSearchQuery.trim()) return true;
-    const q = customerSearchQuery.toLowerCase();
-    return (
-      p.business_name.toLowerCase().includes(q) ||
-      p.pic_name.toLowerCase().includes(q) ||
-      p.phone.includes(q) ||
-      p.address.toLowerCase().includes(q)
-    );
-  });
+  const filteredProspects = useMemo(() => {
+    if (!customerSearchQuery.trim()) return prospectsSource;
+    const q = customerSearchQuery.toLowerCase().trim();
+    return prospectsSource.filter((p) => {
+      return (
+        (p.business_name && p.business_name.toLowerCase().includes(q)) ||
+        (p.pic_name && p.pic_name.toLowerCase().includes(q)) ||
+        (p.phone && p.phone.includes(q)) ||
+        (p.address && p.address.toLowerCase().includes(q))
+      );
+    });
+  }, [prospectsSource, customerSearchQuery]);
 
-  const selectedProspect = prospects.find((p) => p.id === selectedProspectId);
+  const selectedProspect = prospectsSource.find((p) => p.id === selectedProspectId);
 
   if (!isOpen) return null;
 
@@ -212,34 +332,100 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   };
 
   const handleAddItem = () => {
+    const chosenNames = new Set(items.map((i) => i.item_name.toLowerCase().trim()));
+    const unchosen = warehouseStock.find(
+      (s) => !chosenNames.has(s.fruit_name.toLowerCase().trim())
+    );
+    const nextFruit = unchosen || warehouseStock[0] || (customFruits[0] ? {
+      id: customFruits[0].id,
+      fruit_name: customFruits[0].name,
+      unit: customFruits[0].unit,
+      current_stock: 0,
+      canvas_allocated_stock: 0,
+      min_stock_alert: 10,
+      avg_cost_price: 0,
+      latest_selling_price: customFruits[0].price,
+    } as StockItem : null);
     setItems((prev) => [
       ...prev,
       {
         id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        item_name: '',
+        item_name: nextFruit ? nextFruit.fruit_name : '',
         quantity: 1,
-        unit: 'kg',
-        price: 0,
-        subtotal: 0,
+        unit: nextFruit ? nextFruit.unit : 'kg',
+        price: nextFruit ? (nextFruit.latest_selling_price || 0) : 0,
+        subtotal: nextFruit ? (nextFruit.latest_selling_price || 0) : 0,
       },
     ]);
   };
 
   const handleRemoveItem = (idx: number) => {
     if (items.length <= 1) {
-      toastError('Minimal harus ada 1 item pesanan.');
+      const fallbackFruit = warehouseStock[0] || null;
+      setItems([
+        {
+          id: `item-${Date.now()}`,
+          item_name: fallbackFruit ? fallbackFruit.fruit_name : '',
+          quantity: 1,
+          unit: fallbackFruit ? fallbackFruit.unit : 'kg',
+          price: fallbackFruit ? (fallbackFruit.latest_selling_price || 0) : 0,
+          subtotal: fallbackFruit ? (fallbackFruit.latest_selling_price || 0) : 0,
+        },
+      ]);
       return;
     }
     setItems((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleAddQuickFruit = (fruit: { name: string; unit: string; price: number }) => {
-    const matched = warehouseStock.find(
-      (s) => s.fruit_name.toLowerCase().trim() === fruit.name.toLowerCase().trim()
+  const handleSelectWarehouseFruit = (idx: number, fruitName: string) => {
+    if (!fruitName) return;
+    const targetName = fruitName.toLowerCase().trim();
+    const exact = warehouseStock.find(
+      (s) => s.fruit_name.toLowerCase().trim() === targetName
     );
+    const matched = exact || warehouseStock.find(
+      (s) =>
+        targetName.startsWith(s.fruit_name.toLowerCase().trim()) ||
+        s.fruit_name.toLowerCase().trim().startsWith(targetName)
+    );
+    if (!matched) return;
+
+    if (matched.current_stock <= 0) {
+      toastSuccess(`Dipilih "${matched.fruit_name}". Stok gudang 0 ${matched.unit} (akan disiapkan saat kulakan/belanja).`);
+    }
+
+    setItems((prev) => {
+      const next = [...prev];
+      const target = { ...next[idx] };
+      target.item_name = matched.fruit_name;
+      target.unit = matched.unit || 'kg';
+      target.price = matched.latest_selling_price || target.price || 0;
+      let qty = Number(target.quantity) || 1;
+      if (qty <= 0) qty = 1;
+      target.quantity = qty;
+      target.subtotal = qty * target.price;
+      next[idx] = target;
+      return next;
+    });
+  };
+
+  const handleAddQuickFruit = (fruit: { name: string; unit: string; price: number }) => {
+    const targetName = fruit.name.toLowerCase().trim();
+    const exact = warehouseStock.find(
+      (s) => s.fruit_name.toLowerCase().trim() === targetName
+    );
+    const matched = exact || warehouseStock.find(
+      (s) =>
+        targetName.startsWith(s.fruit_name.toLowerCase().trim()) ||
+        s.fruit_name.toLowerCase().trim().startsWith(targetName)
+    );
+
+    const price = fruit.price || matched?.latest_selling_price || 0;
+    const unit = fruit.unit || matched?.unit || 'kg';
+    const finalName = matched ? matched.fruit_name : fruit.name;
+
     if (matched && matched.current_stock <= 0) {
-      toastError(`Stok "${fruit.name}" di gudang sedang habis (0 ${fruit.unit}). Tidak dapat ditambahkan.`);
-      return;
+      toastSuccess(`"${finalName}" ditambahkan. Stok gudang 0 ${unit} (akan disiapkan sebelum jadwal kirim).`);
     }
 
     // If the single item is currently empty, replace it
@@ -247,11 +433,11 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       setItems([
         {
           id: items[0].id || 'item-1',
-          item_name: fruit.name,
+          item_name: finalName,
           quantity: 1,
-          unit: fruit.unit,
-          price: fruit.price,
-          subtotal: fruit.price,
+          unit,
+          price,
+          subtotal: price,
         },
       ]);
     } else {
@@ -260,11 +446,11 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         ...prev,
         {
           id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          item_name: fruit.name,
+          item_name: finalName,
           quantity: 1,
-          unit: fruit.unit,
-          price: fruit.price,
-          subtotal: fruit.price,
+          unit,
+          price,
+          subtotal: price,
         },
       ]);
     }
@@ -280,39 +466,22 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         finalVal = val;
         targetItem.item_name = val;
         const targetName = (val || '').toLowerCase().trim();
-        const matched = warehouseStock.find(
+        const exact = warehouseStock.find(
+          (s) => s.fruit_name.toLowerCase().trim() === targetName
+        );
+        const matched = exact || warehouseStock.find(
           (s) =>
-            s.fruit_name.toLowerCase().trim() === targetName ||
-            (targetName && targetName.includes(s.fruit_name.toLowerCase().trim())) ||
-            (targetName && s.fruit_name.toLowerCase().trim().includes(targetName))
+            targetName.length >= 3 &&
+            (targetName.startsWith(s.fruit_name.toLowerCase().trim()) ||
+             s.fruit_name.toLowerCase().trim().startsWith(targetName))
         );
         if (matched) {
           if (matched.unit) targetItem.unit = matched.unit;
           if (matched.latest_selling_price && (!targetItem.price || targetItem.price === 0)) {
             targetItem.price = matched.latest_selling_price;
           }
-          let maxAvailable = matched.current_stock;
-          if (editOrder && editOrder.stock_deducted && editOrder.order_items) {
-            const prevItem = editOrder.order_items.find(
-              (p) =>
-                p.item_name.toLowerCase().trim() === targetName ||
-                (targetName && targetName.includes(p.item_name.toLowerCase().trim())) ||
-                (targetName && p.item_name.toLowerCase().trim().includes(targetName))
-            );
-            if (prevItem) {
-              maxAvailable = Number(((maxAvailable || 0) + (Number(prevItem.quantity) || 0)).toFixed(2));
-            }
-          }
-          if (maxAvailable <= 0) {
-            toastError(`Stok buah "${matched.fruit_name}" di gudang habis (0 ${matched.unit}).`);
-            targetItem.quantity = 0;
-          } else if (Number(targetItem.quantity) > maxAvailable) {
-            toastError(
-              `Stok "${matched.fruit_name}" di gudang hanya tersisa ${maxAvailable} ${matched.unit}. Jumlah disesuaikan ke stok maksimal.`
-            );
-            targetItem.quantity = maxAvailable;
-          } else if (Number(targetItem.quantity) <= 0) {
-            targetItem.quantity = Math.min(1, maxAvailable);
+          if (Number(targetItem.quantity) <= 0) {
+            targetItem.quantity = 1;
           }
         }
       } else if (field === 'quantity') {
@@ -394,42 +563,42 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         return;
       }
       const targetName = it.item_name.toLowerCase().trim();
-      const matched = warehouseStock.find(
-        (s) =>
-          s.fruit_name.toLowerCase().trim() === targetName ||
-          targetName.includes(s.fruit_name.toLowerCase().trim()) ||
-          s.fruit_name.toLowerCase().trim().includes(targetName)
+      const exactStock = warehouseStock.find(
+        (s) => s.fruit_name.toLowerCase().trim() === targetName
       );
-      if (!matched) {
-        toastError(`Buah "${it.item_name}" tidak ditemukan dalam katalog stok gudang. Mohon pilih buah yang tersedia.`);
-        return;
-      }
-      let availableStock = matched.current_stock;
-      // If editing an existing order, credit back the quantity of that item originally in this order
-      if (editOrder && editOrder.stock_deducted && editOrder.order_items) {
-        const prev = editOrder.order_items.find(
-          (p) =>
-            p.item_name.toLowerCase().trim() === targetName ||
-            targetName.includes(p.item_name.toLowerCase().trim()) ||
-            p.item_name.toLowerCase().trim().includes(targetName)
-        );
-        if (prev) {
-          availableStock += Number(prev.quantity) || 0;
+      const matched = exactStock || warehouseStock.find(
+        (s) =>
+          targetName.length >= 3 &&
+          (targetName.startsWith(s.fruit_name.toLowerCase().trim()) ||
+           s.fruit_name.toLowerCase().trim().startsWith(targetName))
+      );
+      if (matched && deliverySlot === 'Sekarang') {
+        let availableStock = matched.current_stock;
+        if (editOrder && editOrder.stock_deducted && editOrder.order_items) {
+          const prev = editOrder.order_items.find(
+            (p) =>
+              p.item_name.toLowerCase().trim() === targetName ||
+              targetName.includes(p.item_name.toLowerCase().trim()) ||
+              p.item_name.toLowerCase().trim().includes(targetName)
+          );
+          if (prev) {
+            availableStock += Number(prev.quantity) || 0;
+          }
         }
-      }
 
-      if (availableStock <= 0) {
-        toastError(
-          `Stok buah "${matched.fruit_name}" di gudang sedang habis (0 ${matched.unit}). Hapus item ini untuk melanjutkan pesanan.`
-        );
-        return;
-      }
+        if (availableStock <= 0) {
+          toastError(
+            `Stok buah "${matched.fruit_name}" di gudang sedang habis (0 ${matched.unit}) untuk pengantaran langsung sekarang. Pilih buah lain atau ubah jadwal pengantaran.`
+          );
+          return;
+        }
 
-      if (qty > availableStock) {
-        toastError(
-          `Stok buah "${matched.fruit_name}" di gudang hanya tersisa ${availableStock} ${matched.unit}. Jumlah pesanan (${qty} ${matched.unit}) melebihi stok yang ada.`
-        );
-        return;
+        if (qty > availableStock) {
+          toastError(
+            `Stok buah "${matched.fruit_name}" di gudang hanya tersisa ${availableStock} ${matched.unit} untuk pengantaran langsung sekarang.`
+          );
+          return;
+        }
       }
     }
 
@@ -465,33 +634,34 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-gray-200">
+    <div className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in overflow-x-hidden">
+      <div className="bg-white sm:rounded-2xl w-full sm:max-w-3xl shadow-2xl flex flex-col h-full sm:h-auto sm:max-h-[92vh] overflow-hidden border-0 sm:border border-gray-200 max-w-full">
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-emerald-700 to-teal-700 text-white">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/20 rounded-xl">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-emerald-700 to-teal-700 text-white shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 bg-white/20 rounded-xl shrink-0">
               <ShoppingBag className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h3 className="font-bold text-base sm:text-lg leading-tight">
+            <div className="min-w-0">
+              <h3 className="font-bold text-sm sm:text-lg leading-tight truncate">
                 {editOrder ? `Edit Order #${editOrder.order_number}` : 'Catat Order Masuk (WhatsApp / Telepon)'}
               </h3>
-              <p className="text-xs text-emerald-100">
+              <p className="text-[11px] sm:text-xs text-emerald-100 truncate">
                 Otomatisasi jadwal jam pengantaran & penugasan kurir PesanBuah.id
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer shrink-0 ml-2"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden w-full max-w-full">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 space-y-4 w-full max-w-full">
           {isOrderLockedForSales && (
             <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex items-center gap-2.5 text-xs text-amber-950 font-medium animate-in fade-in">
               <Lock className="w-4 h-4 text-amber-700 shrink-0" />
@@ -500,27 +670,55 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               </span>
             </div>
           )}
-          <fieldset disabled={isOrderLockedForSales} className="space-y-4">
+          <fieldset disabled={isOrderLockedForSales} className="space-y-4 min-w-0 w-full max-w-full">
           {/* Quick Prospect Match - Searchable Combobox */}
-          <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2 relative">
+          <div ref={customerDropdownRef} className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2 relative">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5 uppercase">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                Pilih Dari CRM Pelanggan (Opsional)
+                Cari &amp; Pilih Dari CRM Pelanggan
               </label>
-              {selectedProspectId && (
+              <span className="text-[10px] text-emerald-800 font-medium">
+                Tersedia {prospectsSource.length} pelanggan terdaftar
+              </span>
+            </div>
+
+            {/* Selected Prospect Banner */}
+            {selectedProspect && (
+              <div className="flex items-center justify-between gap-2 p-2.5 bg-emerald-100/90 border border-emerald-300 rounded-xl text-xs animate-in fade-in">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="p-1 bg-emerald-600 text-white rounded-md shrink-0">
+                    <Check className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-emerald-950 text-xs truncate">
+                        {selectedProspect.business_name}
+                      </span>
+                      <span className="text-[10px] text-emerald-800 font-medium">
+                        (PIC: {selectedProspect.pic_name})
+                      </span>
+                      <span className="text-[9px] bg-emerald-200 text-emerald-900 font-extrabold px-1.5 py-0.2 rounded">
+                        {selectedProspect.status}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-emerald-800 truncate">
+                      📞 {selectedProspect.phone} &bull; 📍 {selectedProspect.address}
+                    </div>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedProspectId('');
                     setCustomerSearchQuery('');
                   }}
-                  className="text-[10px] text-emerald-700 hover:text-rose-600 font-semibold cursor-pointer underline"
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-800 px-2.5 py-1 rounded-lg hover:bg-rose-50 border border-rose-200 transition cursor-pointer shrink-0"
                 >
-                  Reset Pilihan
+                  Lepas CRM
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Search Input Box */}
             <div className="relative">
@@ -529,109 +727,111 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               </div>
               <input
                 type="text"
-                value={
-                  isCustomerDropdownOpen
-                    ? customerSearchQuery
-                    : selectedProspect
-                    ? `${selectedProspect.business_name} (${selectedProspect.pic_name}) - ${selectedProspect.phone}`
-                    : customerSearchQuery
-                }
-                onFocus={() => {
-                  setIsCustomerDropdownOpen(true);
-                  if (selectedProspect && !customerSearchQuery) {
-                    setCustomerSearchQuery(selectedProspect.business_name);
-                  }
-                }}
+                value={customerSearchQuery}
+                onFocus={() => setIsCustomerDropdownOpen(true)}
                 onChange={(e) => {
                   setCustomerSearchQuery(e.target.value);
                   setIsCustomerDropdownOpen(true);
                 }}
-                placeholder="Ketik nama resto, cafe, PIC, atau nomor HP customer..."
-                className="w-full pl-9 pr-8 py-2 bg-white border border-emerald-300 rounded-lg text-xs font-medium text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden shadow-2xs"
+                placeholder={
+                  selectedProspect
+                    ? `Ketik nama pelanggan lain untuk mengganti (${selectedProspect.business_name})...`
+                    : `Ketik nama kafe, resto, PIC, atau no HP (dari ${prospectsSource.length} pelanggan)...`
+                }
+                className="w-full pl-9 pr-16 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm font-medium text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden shadow-2xs"
               />
-              <button
-                type="button"
-                onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
-                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-emerald-700 cursor-pointer"
-              >
-                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isCustomerDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
+
+              <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
+                {customerSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomerSearchQuery('')}
+                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                    title="Hapus pencarian"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
+                  className="p-1 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md cursor-pointer"
+                  title="Buka daftar pelanggan"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isCustomerDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
 
               {/* Floating Dropdown Results Menu */}
               {isCustomerDropdownOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-20"
-                    onClick={() => setIsCustomerDropdownOpen(false)}
-                  />
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-emerald-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto divide-y divide-gray-100">
-                    <div className="p-2 bg-emerald-50/50 text-[11px] font-semibold text-emerald-900 flex justify-between items-center sticky top-0 backdrop-blur-xs border-b border-emerald-100">
-                      <span>Hasil Pencarian ({filteredProspects.length} dari {prospects.length} customer)</span>
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomerDropdownOpen(false)}
-                        className="text-gray-400 hover:text-gray-600 text-xs px-1"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    {filteredProspects.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-gray-400">
-                        Tidak ada customer cocok dengan kata kunci "<strong>{customerSearchQuery}</strong>"
-                      </div>
-                    ) : (
-                      filteredProspects.map((p) => {
-                        const isSelected = p.id === selectedProspectId;
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => {
-                              handleSelectProspect(p.id);
-                              setCustomerSearchQuery('');
-                              setIsCustomerDropdownOpen(false);
-                            }}
-                            className={`w-full text-left p-2.5 hover:bg-emerald-50 transition flex items-start justify-between gap-2 cursor-pointer ${
-                              isSelected ? 'bg-emerald-50/80 font-bold' : ''
-                            }`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-xs text-gray-900 truncate">
-                                  {p.business_name}
-                                </span>
-                                <span className="text-[10px] text-gray-500">
-                                  (PIC: {p.pic_name})
-                                </span>
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-                                  p.status === 'Customer'
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : p.status === 'Follow Up'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-amber-100 text-amber-800'
-                                }`}>
-                                  {p.status}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-gray-500 truncate mt-0.5">
-                                📞 {p.phone} &bull; 📍 {p.address}
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
+                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-emerald-200 rounded-xl shadow-2xl z-40 max-h-60 overflow-y-auto divide-y divide-gray-100">
+                  <div className="p-2 bg-emerald-50 text-[11px] font-semibold text-emerald-950 flex justify-between items-center sticky top-0 backdrop-blur-xs border-b border-emerald-100 z-10">
+                    <span>Hasil Pencarian ({filteredProspects.length} dari {prospectsSource.length} customer)</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomerDropdownOpen(false)}
+                      className="text-gray-400 hover:text-gray-600 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                    >
+                      Tutup ✕
+                    </button>
                   </div>
-                </>
+
+                  {filteredProspects.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-gray-500 space-y-1">
+                      <div>Tidak ada pelanggan CRM yang cocok dengan "<strong>{customerSearchQuery}</strong>"</div>
+                      <div className="text-[11px] text-gray-400">Anda dapat langsung mengisi formulir rincian pemesan di bawah secara manual.</div>
+                    </div>
+                  ) : (
+                    filteredProspects.map((p) => {
+                      const isSelected = p.id === selectedProspectId;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            handleSelectProspect(p.id);
+                            setCustomerSearchQuery('');
+                            setIsCustomerDropdownOpen(false);
+                          }}
+                          className={`w-full text-left p-2.5 hover:bg-emerald-50 transition flex items-start justify-between gap-2 cursor-pointer ${
+                            isSelected ? 'bg-emerald-50 font-bold' : ''
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-xs text-gray-900 truncate">
+                                {p.business_name}
+                              </span>
+                              <span className="text-[10px] text-gray-500">
+                                (PIC: {p.pic_name})
+                              </span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                                p.status === 'Customer'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : p.status === 'Follow Up'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {p.status}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                              📞 {p.phone} &bull; 📍 {p.address}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               )}
             </div>
 
             <p className="text-[10px] text-gray-500">
-              💡 Cukup ketik nama kafe/resto/PIC atau nomor telepon untuk mencari cepat tanpa scroll. Alamat &amp; nomor WA akan terisi otomatis.
+              💡 Ketik nama kafe/resto/PIC atau nomor WhatsApp untuk mengisi alamat otomatis. Atau langsung isi form di bawah jika pesanan dari customer baru.
             </p>
           </div>
 
@@ -878,12 +1078,13 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
             </div>
 
             {/* Quick fruit chips for on-the-spot orders when muter */}
-            <div className="p-2.5 bg-white rounded-xl border border-gray-200 space-y-1.5 shadow-2xs">
-              <div className="text-[11px] text-gray-700 font-bold flex items-center justify-between flex-wrap gap-1">
-                <span className="flex items-center gap-1">
-                  🍊 <span>Pilih Cepat Buah:</span>
+            <div className="p-3 bg-white rounded-2xl border border-gray-200 space-y-2 shadow-2xs">
+              <div className="text-xs text-gray-800 font-bold flex items-center justify-between flex-wrap gap-1.5">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-base">🍊</span>
+                  <span>Katalog Buah Tersedia di Inventory ({inventoryFruitChips.length} Jenis):</span>
                   <span className="text-[10px] text-gray-400 font-normal hidden sm:inline">
-                    (Klik untuk langsung isi item saat muter)
+                    (Klik chip buah untuk langsung memasukkan ke order)
                   </span>
                 </span>
                 {(isOwner || isManager) && (
@@ -891,17 +1092,17 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                     type="button"
                     onClick={() => setIsManageFruitsModalOpen(true)}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition cursor-pointer shadow-2xs"
-                    title="Owner/Manager dapat menambah, mengedit, atau menghapus jenis buah sesuai stok aktual yang Anda jual"
+                    title="Owner/Manager dapat menambah atau mengatur master buah"
                   >
                     <Settings className="w-3 h-3 text-emerald-600" />
-                    <span>⚙️ Kelola / Edit Buah Saya</span>
+                    <span>⚙️ Kelola Master Buah</span>
                   </button>
                 )}
               </div>
 
-              {customFruits.length === 0 ? (
-                <div className="text-xs text-gray-400 py-1 flex items-center justify-between">
-                  <span>Belum ada daftar buah.</span>
+              {inventoryFruitChips.length === 0 ? (
+                <div className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center justify-between">
+                  <span>Belum ada data buah di gudang/inventory.</span>
                   {(isOwner || isManager) && (
                     <button
                       type="button"
@@ -913,50 +1114,58 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                  {customFruits
-                    .filter((fruit) => fruit.is_active !== false)
-                    .map((fruit) => {
-                      const matchedStock = warehouseStock.find(
-                        (s) => s.fruit_name.toLowerCase().trim() === fruit.name.toLowerCase().trim()
-                      );
-                      const isOutOfStock = matchedStock && matchedStock.current_stock <= 0;
-
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {(showAllChips ? inventoryFruitChips : inventoryFruitChips.slice(0, 8)).map((fruit) => {
+                      const isOutOfStock = fruit.stock <= 0;
                       return (
                         <button
                           key={fruit.id}
                           type="button"
-                          disabled={isOutOfStock}
-                          onClick={() => handleAddQuickFruit(fruit)}
-                          className={`px-2.5 py-1 border rounded-lg text-[11px] font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs ${
-                            isOutOfStock
-                              ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60'
-                              : 'bg-gray-50 border-gray-200 hover:border-emerald-500 hover:bg-emerald-50 text-gray-800'
-                          }`}
-                          title={
-                            isOutOfStock
-                              ? `${fruit.name} (Stok Habis di Gudang)`
-                              : `Tambah ${fruit.name} (${formatRupiah(fruit.price)} / ${fruit.unit}${matchedStock ? ` - Sisa Stok: ${matchedStock.current_stock} ${matchedStock.unit}` : ''})`
+                          onClick={() =>
+                            handleAddQuickFruit({
+                              name: fruit.name,
+                              unit: fruit.unit,
+                              price: fruit.price,
+                            })
                           }
+                          className={`px-2.5 py-1.5 border rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95 ${
+                            isOutOfStock
+                              ? 'bg-amber-50/70 border-amber-200 hover:bg-amber-100 text-amber-950'
+                              : 'bg-emerald-50/80 border-emerald-200 hover:border-emerald-500 hover:bg-emerald-100 text-gray-800'
+                          }`}
+                          title={`Tambah ${fruit.name} (${formatRupiah(fruit.price)}/${fruit.unit} • Sisa: ${fruit.stock} ${fruit.unit})`}
                         >
-                          <span>{fruit.emoji || '🍊'}</span>
-                          <span>{fruit.name}</span>
-                          {matchedStock ? (
-                            isOutOfStock ? (
-                              <span className="text-[9px] text-rose-600 font-bold bg-rose-50 px-1 py-0.2 rounded border border-rose-200">
-                                Habis
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-emerald-800 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
-                                {matchedStock.current_stock} {matchedStock.unit}
-                              </span>
-                            )
+                          <span className="text-sm">{fruit.emoji || '🍊'}</span>
+                          <span className="font-bold">{fruit.name}</span>
+                          {isOutOfStock ? (
+                            <span className="text-[9px] text-amber-800 font-extrabold bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                              0 {fruit.unit}
+                            </span>
                           ) : (
-                            <span className="text-[9px] text-gray-400">({fruit.unit})</span>
+                            <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                              {fruit.stock} {fruit.unit}
+                            </span>
+                          )}
+                          {fruit.price > 0 && (
+                            <span className="text-[10px] text-gray-500 font-medium">
+                              {formatRupiah(fruit.price)}
+                            </span>
                           )}
                         </button>
                       );
                     })}
+
+                    {inventoryFruitChips.length > 8 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllChips(!showAllChips)}
+                        className="px-2.5 py-1.5 border border-dashed border-gray-300 hover:border-emerald-400 bg-gray-50 hover:bg-emerald-50 rounded-xl text-xs font-bold text-gray-600 hover:text-emerald-800 transition cursor-pointer shadow-2xs"
+                      >
+                        {showAllChips ? 'Tampilkan Lebih Sedikit ▲' : `+${inventoryFruitChips.length - 8} Buah Lainnya ▼`}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -964,20 +1173,20 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
             <div className="space-y-3">
               {items.map((item, idx) => {
                 const targetName = item.item_name.toLowerCase().trim();
-                const matchedStock = warehouseStock.find(
+                const exactStock = warehouseStock.find(
+                  (s) => s.fruit_name.toLowerCase().trim() === targetName
+                );
+                const matchedStock = exactStock || warehouseStock.find(
                   (s) =>
-                    s.fruit_name.toLowerCase().trim() === targetName ||
-                    (targetName && targetName.includes(s.fruit_name.toLowerCase().trim())) ||
-                    (targetName && s.fruit_name.toLowerCase().trim().includes(targetName))
+                    targetName.length >= 3 &&
+                    (targetName.startsWith(s.fruit_name.toLowerCase().trim()) ||
+                     s.fruit_name.toLowerCase().trim().startsWith(targetName))
                 );
 
                 let availableStock = matchedStock ? matchedStock.current_stock : null;
                 if (matchedStock && editOrder && editOrder.stock_deducted && editOrder.order_items) {
                   const prev = editOrder.order_items.find(
-                    (p) =>
-                      p.item_name.toLowerCase().trim() === targetName ||
-                      targetName.includes(p.item_name.toLowerCase().trim()) ||
-                      p.item_name.toLowerCase().trim().includes(targetName)
+                    (p) => p.item_name.toLowerCase().trim() === matchedStock.fruit_name.toLowerCase().trim()
                   );
                   if (prev) {
                     availableStock = Number(((availableStock || 0) + (Number(prev.quantity) || 0)).toFixed(2));
@@ -990,8 +1199,8 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 return (
                   <div
                     key={item.id || idx}
-                    className={`bg-white p-3 sm:p-4 rounded-2xl border shadow-xs space-y-2.5 transition ${
-                      isOutOfStock || isOverStock ? 'border-rose-400 ring-1 ring-rose-200' : 'border-gray-300 hover:border-emerald-400'
+                    className={`bg-white p-3 sm:p-4 rounded-2xl border shadow-xs space-y-3 transition min-w-0 max-w-full ${
+                      isOverStock ? 'border-amber-400 ring-1 ring-amber-200' : 'border-gray-200 hover:border-emerald-400'
                     }`}
                   >
                     {/* Top Bar of item: Badge & Delete */}
@@ -1001,179 +1210,214 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                         Buah #{idx + 1}
                       </span>
 
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(idx)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          title="Hapus baris buah ini"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Hapus</span>
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        title={items.length > 1 ? "Hapus baris buah ini" : "Kosongkan baris buah ini"}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{items.length > 1 ? 'Hapus' : 'Kosongkan'}</span>
+                      </button>
                     </div>
 
-                    {/* Input Nama Buah */}
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                    {/* Pilih Buah dari Gudang / Inventory */}
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap">
                         <label className="block text-xs font-bold text-gray-700">
-                          Nama Produk / Buah *
+                          Pilih Buah dari Inventory Gudang <span className="text-rose-500">*</span>
                         </label>
-                        {matchedStock && (
+                        {matchedStock ? (
                           <span
-                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border break-words max-w-full ${
                               isOutOfStock
-                                ? 'bg-rose-100 text-rose-900 border-rose-300'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
                                 : isOverStock
                                 ? 'bg-amber-100 text-amber-900 border-amber-300'
                                 : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                             }`}
                           >
                             {isOutOfStock
-                              ? `⚠️ Stok Gudang Habis (0 ${matchedStock.unit})`
-                              : `Stok Gudang: ${availableStock} ${matchedStock.unit}`}
+                              ? `⚠️ Stok Gudang: 0 ${matchedStock.unit} (Akan disiapkan saat belanja)`
+                              : isOverStock
+                              ? `⚠️ Melebihi Stok! Maks: ${availableStock} ${matchedStock.unit}`
+                              : `✅ Stok Gudang: ${availableStock} ${matchedStock.unit} • Harga: ${formatRupiah(matchedStock.latest_selling_price || item.price)}/${matchedStock.unit}`}
                           </span>
-                        )}
+                        ) : item.item_name.trim() ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-300">
+                            📝 Buah Khusus / Baru
+                          </span>
+                        ) : null}
                       </div>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Contoh: Jeruk Medan Manis, Pisang Cavendish, Lemon, dll."
-                        value={item.item_name}
-                        onChange={(e) => handleItemChange(idx, 'item_name', e.target.value)}
-                        className={`w-full px-3.5 py-2.5 bg-gray-50 border rounded-xl text-sm font-semibold text-gray-900 focus:ring-2 focus:bg-white outline-hidden ${
-                          isOutOfStock ? 'border-rose-400 focus:ring-rose-500' : 'border-gray-300 focus:ring-emerald-500'
-                        }`}
-                      />
-                    </div>
 
-                    {/* Responsive Grid: Jumlah Qty, Satuan, Harga Satuan, Subtotal */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                      {/* 1. Jumlah Qty / Kg */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-bold text-gray-700">
-                            Jumlah (Qty)
-                          </label>
-                          {availableStock !== null && (
-                            <span className="text-[10px] text-gray-500 font-semibold">
-                              Maks: {availableStock}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const current = Number(item.quantity) || 1;
-                              const next = Math.max(0.1, current <= 1 ? current - 0.5 : current - 1);
-                              handleItemChange(idx, 'quantity', Number(next.toFixed(1)));
-                            }}
-                            className="w-9 h-10 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 rounded-l-xl font-black text-base flex items-center justify-center border border-r-0 border-gray-300 cursor-pointer select-none"
-                            title="Kurangi 1"
-                          >
-                            -
-                          </button>
+                      {/* Dropdown Langsung dari Stok Gudang */}
+                      <select
+                        value={
+                          matchedStock
+                            ? matchedStock.fruit_name
+                            : item.item_name.trim()
+                            ? '__custom__'
+                            : ''
+                        }
+                        onChange={(e) => {
+                          if (e.target.value === '__custom__') {
+                            handleItemChange(idx, 'item_name', 'Buah Khusus');
+                          } else if (e.target.value) {
+                            handleSelectWarehouseFruit(idx, e.target.value);
+                          } else {
+                            handleItemChange(idx, 'item_name', '');
+                          }
+                        }}
+                        className="w-full max-w-full truncate h-11 px-3 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-hidden cursor-pointer shadow-2xs"
+                      >
+                        <option value="">-- Pilih Buah dari Inventory Gudang ({warehouseStock.length} jenis) --</option>
+                        {warehouseStock.map((s) => (
+                          <option key={s.id} value={s.fruit_name}>
+                            {s.emoji || '🍊'} {s.fruit_name} — {s.current_stock > 0 ? `Sisa: ${s.current_stock} ${s.unit}` : `(Stok Habis 0 ${s.unit})`} • {formatRupiah(s.latest_selling_price || 0)}/{s.unit}
+                          </option>
+                        ))}
+                        <option value="__custom__">➕ Ketik Nama Buah Lain / Manual...</option>
+                      </select>
+
+                      {/* Input manual untuk mengetik buah khusus HANYA jika bukan dari katalog dan memang diisi */}
+                      {(!matchedStock && item.item_name.trim() !== '') && (
+                        <div className="pt-1.5 flex items-center gap-2 min-w-0">
                           <input
-                            type="number"
-                            min="0.1"
-                            max={availableStock !== null && availableStock > 0 ? availableStock : undefined}
-                            step="any"
+                            type="text"
                             required
-                            disabled={isOutOfStock}
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                            placeholder={isOutOfStock ? '0' : '1'}
-                            className={`w-full h-10 bg-white border-y text-center font-extrabold text-sm sm:text-base outline-hidden ${
-                              isOutOfStock ? 'border-rose-400 text-rose-500 bg-gray-100 cursor-not-allowed' : isOverStock ? 'border-rose-400 text-rose-700 bg-rose-50/50' : 'border-gray-300 text-gray-900'
-                            }`}
+                            placeholder="Ketik nama buah manual (misal: Jeruk Bali, Apel Malang)..."
+                            value={item.item_name}
+                            onChange={(e) => handleItemChange(idx, 'item_name', e.target.value)}
+                            className="flex-1 min-w-0 h-10 px-3.5 bg-gray-50 border border-emerald-300 rounded-xl text-xs sm:text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden"
+                            autoFocus
                           />
                           <button
                             type="button"
-                            disabled={isOutOfStock || (availableStock !== null && Number(item.quantity) >= availableStock)}
                             onClick={() => {
-                              const current = Number(item.quantity) || 0;
-                              const next = current + 1;
-                              if (availableStock !== null && next > availableStock) {
-                                toastError(`Stok buah "${item.item_name}" di gudang hanya tersisa ${availableStock} ${item.unit}.`);
-                                return;
-                              }
-                              handleItemChange(idx, 'quantity', Number(next.toFixed(1)));
+                              const fb = warehouseStock[0] || null;
+                              if (fb) handleSelectWarehouseFruit(idx, fb.fruit_name);
                             }}
-                            className="w-9 h-10 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 disabled:opacity-40 text-gray-700 rounded-r-xl font-black text-base flex items-center justify-center border border-l-0 border-gray-300 cursor-pointer select-none"
-                            title="Tambah 1"
+                            className="px-2.5 py-2 text-xs font-bold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl shrink-0 cursor-pointer"
                           >
-                            +
+                            Pilih Katalog
                           </button>
                         </div>
-                        {isOutOfStock && (
-                          <p className="text-[10px] font-bold text-rose-600 mt-1">
-                            ⚠️ Stok buah ini habis di gudang (0 {matchedStock?.unit || item.unit})!
-                          </p>
-                        )}
-                        {isOverStock && (
-                          <p className="text-[10px] font-bold text-rose-600 mt-1">
-                            ⚠️ Melebihi stok gudang! Maks: {availableStock} {matchedStock?.unit || item.unit}
-                          </p>
-                        )}
+                      )}
+                    </div>
+
+                    {/* Responsive Grid: Jumlah Qty, Satuan, Harga Satuan, Subtotal */}
+                    <div className="space-y-2.5 sm:space-y-0 sm:grid sm:grid-cols-4 sm:gap-3 pt-1 min-w-0">
+                      {/* Mobile Row 1: Qty Stepper & Satuan */}
+                      <div className="grid grid-cols-2 sm:col-span-2 sm:grid-cols-2 gap-2 min-w-0">
+                        {/* 1. Jumlah Qty */}
+                        <div className="min-w-0">
+                          <div className="flex items-center justify-between mb-1 gap-1">
+                            <label className="block text-xs font-bold text-gray-700 truncate">
+                              Jumlah (Qty)
+                            </label>
+                            {availableStock !== null && (
+                              <span className="text-[10px] text-gray-500 font-semibold shrink-0">
+                                Maks: {availableStock}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center w-full min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = Number(item.quantity) || 1;
+                                const next = Math.max(0.1, current <= 1 ? current - 0.5 : current - 1);
+                                handleItemChange(idx, 'quantity', Number(next.toFixed(1)));
+                              }}
+                              className="w-9 h-10 sm:w-10 sm:h-10 shrink-0 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 rounded-l-xl font-black text-lg flex items-center justify-center border border-r-0 border-gray-300 cursor-pointer select-none"
+                              title="Kurangi 1"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0.1"
+                              step="any"
+                              required
+                              value={item.quantity}
+                              onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                              placeholder="1"
+                              className="w-full min-w-0 h-10 bg-white border-y border-gray-300 text-center font-extrabold text-sm sm:text-base outline-hidden text-gray-900"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = Number(item.quantity) || 0;
+                                const next = current + 1;
+                                handleItemChange(idx, 'quantity', Number(next.toFixed(1)));
+                              }}
+                              className="w-9 h-10 sm:w-10 sm:h-10 shrink-0 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 rounded-r-xl font-black text-lg flex items-center justify-center border border-l-0 border-gray-300 cursor-pointer select-none"
+                              title="Tambah 1"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 2. Satuan Jual */}
+                        <div className="min-w-0">
+                          <label className="block text-xs font-bold text-gray-700 mb-1 truncate">
+                            Satuan Jual
+                          </label>
+                          <select
+                            value={item.unit}
+                            onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
+                            className="w-full min-w-0 max-w-full truncate h-10 px-2 sm:px-2.5 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-500 outline-hidden cursor-pointer"
+                          >
+                            <option value="kg">kg (Kilogram)</option>
+                            <option value="dus">dus (Karton)</option>
+                            <option value="pack">pack</option>
+                            <option value="ikat">ikat</option>
+                            <option value="pcs">pcs (Biji)</option>
+                            <option value="karung">karung</option>
+                            <option value="keranjang">keranjang</option>
+                          </select>
+                        </div>
                       </div>
 
-                    {/* 2. Satuan Jual */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        Satuan Jual
-                      </label>
-                      <select
-                        value={item.unit}
-                        onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
-                        className="w-full h-10 px-2.5 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-500 outline-hidden cursor-pointer"
-                      >
-                        <option value="kg">kg (Kilogram)</option>
-                        <option value="dus">dus (Karton)</option>
-                        <option value="pack">pack</option>
-                        <option value="ikat">ikat</option>
-                        <option value="pcs">pcs (Biji)</option>
-                        <option value="karung">karung</option>
-                        <option value="keranjang">keranjang</option>
-                      </select>
-                    </div>
+                      {/* Mobile Row 2: Harga Satuan & Subtotal */}
+                      <div className="grid grid-cols-2 sm:col-span-2 sm:grid-cols-2 gap-2 min-w-0">
+                        {/* 3. Harga Satuan Rp */}
+                        <div className="min-w-0">
+                          <label className="block text-xs font-bold text-gray-700 mb-1 truncate">
+                            Harga Satuan (Rp)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="500"
+                            value={item.price === 0 ? '' : item.price}
+                            onChange={(e) =>
+                              handleItemChange(
+                                idx,
+                                'price',
+                                e.target.value === '' ? 0 : Number(e.target.value)
+                              )
+                            }
+                            placeholder="0"
+                            className="w-full min-w-0 h-10 px-2 sm:px-3 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-right text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                          />
+                        </div>
 
-                    {/* 3. Harga Satuan Rp */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        Harga Satuan (Rp)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="500"
-                        value={item.price === 0 ? '' : item.price}
-                        onChange={(e) =>
-                          handleItemChange(
-                            idx,
-                            'price',
-                            e.target.value === '' ? 0 : Number(e.target.value)
-                          )
-                        }
-                        placeholder="0"
-                        className="w-full h-10 px-3 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-right text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-hidden"
-                      />
-                    </div>
-
-                    {/* 4. Subtotal */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1 text-right sm:text-left">
-                        Subtotal (Rp)
-                      </label>
-                      <div className="w-full h-10 px-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-end font-mono font-extrabold text-xs sm:text-sm text-emerald-800 shadow-2xs">
-                        {formatRupiah(item.subtotal)}
+                        {/* 4. Subtotal */}
+                        <div className="min-w-0">
+                          <label className="block text-xs font-bold text-gray-700 mb-1 text-right sm:text-left truncate">
+                            Subtotal (Rp)
+                          </label>
+                          <div className="w-full min-w-0 h-10 px-2 sm:px-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-end font-mono font-extrabold text-xs sm:text-sm text-emerald-800 shadow-2xs truncate">
+                            {formatRupiah(item.subtotal)}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
 
             {/* Bottom Add Item Button */}
@@ -1305,33 +1549,44 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
           </div>
           </fieldset>
 
-          {/* Submit Buttons */}
-          <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
-            >
-              {isOrderLockedForSales ? 'Tutup' : 'Batal'}
-            </button>
-            {isOrderLockedForSales ? (
+          </div>
+
+          {/* Sticky Bottom Summary & Submit Bar */}
+          <div className="shrink-0 bg-white border-t border-gray-200 p-2.5 sm:p-4 shadow-lg flex items-center justify-between gap-2 sm:gap-3 z-20 w-full max-w-full">
+            <div className="min-w-0">
+              <span className="text-[10px] sm:text-xs text-gray-500 block uppercase font-bold truncate">Total Tagihan</span>
+              <span className="font-black text-base sm:text-2xl text-emerald-700 font-mono truncate block">
+                {formatRupiah(grandTotal)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
-                disabled
-                className="px-5 py-2.5 bg-gray-100 border border-gray-200 text-gray-400 text-xs font-bold rounded-xl cursor-not-allowed flex items-center gap-1.5"
+                onClick={onClose}
+                className="px-3 sm:px-3.5 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
               >
-                <Lock className="w-3.5 h-3.5 text-gray-400" />
-                <span>Terkunci (Hanya-Baca)</span>
+                {isOrderLockedForSales ? 'Tutup' : 'Batal'}
               </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
-              >
-                {isSubmitting ? 'Menyimpan Order...' : editOrder ? 'Perbarui Order' : 'Simpan Order & Terbitkan'}
-              </button>
-            )}
+              {isOrderLockedForSales ? (
+                <button
+                  type="button"
+                  disabled
+                  className="px-3 sm:px-4 py-2 bg-gray-100 border border-gray-200 text-gray-400 text-xs font-bold rounded-xl cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5 text-gray-400" />
+                  <span>Terkunci</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-3.5 sm:px-6 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{isSubmitting ? 'Menyimpan...' : editOrder ? 'Perbarui Order' : 'Simpan Order'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

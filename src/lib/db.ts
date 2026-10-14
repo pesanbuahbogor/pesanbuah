@@ -39,202 +39,91 @@ const STORAGE_CANVAS_TRIPS = 'pesanbuah_db_canvas_trips_v1';
 const STORAGE_STOCK_LOGS = 'pesanbuah_db_stock_logs_v1';
 const STORAGE_DELETED_FRUITS = 'pesanbuah_db_deleted_fruits_v1';
 
-export const DEFAULT_QUICK_FRUITS: QuickFruitItem[] = [
-  { id: 'qf-1', name: 'Jeruk Medan Manis', unit: 'kg', price: 28000, emoji: '🍊', is_active: true },
-  { id: 'qf-2', name: 'Jeruk Peras Segar', unit: 'kg', price: 18000, emoji: '🍊', is_active: true },
-  { id: 'qf-3', name: 'Pisang Cavendish Super', unit: 'dus', price: 185000, emoji: '🍌', is_active: true },
-  { id: 'qf-4', name: 'Lemon California Segar', unit: 'kg', price: 25000, emoji: '🍋', is_active: true },
-  { id: 'qf-5', name: 'Semangka Non Biji Merah', unit: 'kg', price: 9500, emoji: '🍉', is_active: true },
-  { id: 'qf-6', name: 'Melon Sky Rocket', unit: 'kg', price: 14000, emoji: '🍈', is_active: true },
-  { id: 'qf-7', name: 'Alpukat Mentega Super', unit: 'kg', price: 28000, emoji: '🥑', is_active: true },
-  { id: 'qf-8', name: 'Apel Fuji Segar', unit: 'kg', price: 35000, emoji: '🍎', is_active: true },
-];
+// Master item defaults: Always start empty so only real data from database/inventory is displayed.
+export const DEFAULT_QUICK_FRUITS: QuickFruitItem[] = [];
+export const DEFAULT_STOCK_ITEMS: StockItem[] = [];
+export const DEFAULT_STOCK_INBOUNDS: StockInbound[] = [];
+export const DEFAULT_CANVAS_TRIPS: CanvasTrip[] = [];
+export const DEFAULT_STOCK_LOGS: StockMovementLog[] = [];
 
-export const DEFAULT_STOCK_ITEMS: StockItem[] = [
-  {
-    id: 'stk-1',
-    fruit_name: 'Jeruk Medan Manis',
-    unit: 'kg',
-    current_stock: 120.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 20,
-    avg_cost_price: 22000,
-    latest_selling_price: 28000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-2',
-    fruit_name: 'Jeruk Peras Segar',
-    unit: 'kg',
-    current_stock: 85.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 15,
-    avg_cost_price: 14000,
-    latest_selling_price: 18000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-3',
-    fruit_name: 'Pisang Cavendish Super',
-    unit: 'dus',
-    current_stock: 25.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 5,
-    avg_cost_price: 150000,
-    latest_selling_price: 185000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-4',
-    fruit_name: 'Lemon California Segar',
-    unit: 'kg',
-    current_stock: 45.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 10,
-    avg_cost_price: 19000,
-    latest_selling_price: 25000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-5',
-    fruit_name: 'Semangka Non Biji Merah',
-    unit: 'kg',
-    current_stock: 180.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 30,
-    avg_cost_price: 7000,
-    latest_selling_price: 9500,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-6',
-    fruit_name: 'Melon Sky Rocket',
-    unit: 'kg',
-    current_stock: 90.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 15,
-    avg_cost_price: 10500,
-    latest_selling_price: 14000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-7',
-    fruit_name: 'Alpukat Mentega Super',
-    unit: 'kg',
-    current_stock: 60.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 10,
-    avg_cost_price: 21000,
-    latest_selling_price: 28000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-  {
-    id: 'stk-8',
-    fruit_name: 'Apel Fuji Segar',
-    unit: 'kg',
-    current_stock: 40.0,
-    canvas_allocated_stock: 0,
-    min_stock_alert: 10,
-    avg_cost_price: 28000,
-    latest_selling_price: 35000,
-    updated_at: '2026-10-04T08:00:00Z',
-  },
-];
+// Automatic migration & cleanup: Purge any legacy mock test IDs that were previously cached in localStorage
+export function purgeLegacyMockData(): void {
+  try {
+    const mockIds = new Set([
+      'qf-1', 'qf-2', 'qf-3', 'qf-4', 'qf-5', 'qf-6', 'qf-7', 'qf-8',
+      'stk-1', 'stk-2', 'stk-3', 'stk-4', 'stk-5', 'stk-6', 'stk-7', 'stk-8',
+      'inb-001', 'cnv-001', 'log-001', 'log-002', 'log-003',
+      'ord-001', 'ord-002', 'ord-003', 'ord-004',
+    ]);
 
-export const DEFAULT_STOCK_INBOUNDS: StockInbound[] = [
-  {
-    id: 'inb-001',
-    purchase_date: '2026-10-04',
-    fruit_name: 'Jeruk Medan Manis',
-    supplier_name: 'Pasar Induk Kramat Jati (Pak Haji Maman)',
-    buyer_id: 'usr-owner-001',
-    buyer_name: 'Budi Santoso',
-    gross_purchase_qty: 50.0,
-    purchase_price_per_unit: 22000,
-    total_purchase_amount: 1100000,
-    payment_method: 'Tunai',
-    payment_status: 'Lunas',
-    invoice_no: 'INV-KMJ-9921',
-    sorting_checked: true,
-    checked_by_id: 'usr-manager-002',
-    checked_by_name: 'Hendra Wijaya',
-    shrinkage_qty: 2.0,
-    surplus_qty: 0,
-    net_stocked_qty: 48.0,
-    quality_notes: 'Kondisi manis segar, 2 kg susut akibat busuk dan memar di dasar peti.',
-    created_at: '2026-10-04T06:30:00Z',
-    created_by: 'usr-owner-001',
-  },
-];
+    // Clean stock items
+    const rawStock = localStorage.getItem(STORAGE_STOCK_ITEMS);
+    if (rawStock) {
+      try {
+        const stocks: StockItem[] = JSON.parse(rawStock);
+        const cleaned = stocks.filter((s) => !mockIds.has(s.id));
+        localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(cleaned));
+      } catch {}
+    }
 
-export const DEFAULT_CANVAS_TRIPS: CanvasTrip[] = [
-  {
-    id: 'cnv-001',
-    trip_date: '2026-10-04',
-    courier_id: 'usr-courier-005',
-    courier_name: 'Dimas Kurniawan',
-    status: 'Selesai & Rekonsiliasi',
-    items: [
-      {
-        fruit_name: 'Jeruk Medan Manis',
-        unit: 'kg',
-        brought_qty: 10.0,
-        selling_price: 28000,
-        sold_qty: 2.0,
-        expected_cash: 56000,
-        returned_qty: 8.0,
-        shrinkage_qty: 0,
-      },
-    ],
-    total_expected_cash: 56000,
-    actual_cash_submitted: 56000,
-    cash_difference: 0,
-    notes: 'Keliling area Pajajaran & Baranangsiang. Laku 2 kg di Toko Roti, sisa 8 kg kembali utuh ke gudang.',
-    departed_at: '2026-10-04T08:00:00Z',
-    returned_at: '2026-10-04T12:30:00Z',
-    verified_by_name: 'Hendra Wijaya',
-    created_at: '2026-10-04T08:00:00Z',
-  },
-];
+    // Clean quick fruits
+    const rawQF = localStorage.getItem(STORAGE_QUICK_FRUITS);
+    if (rawQF) {
+      try {
+        const qfs: QuickFruitItem[] = JSON.parse(rawQF);
+        const cleaned = qfs.filter((f) => !mockIds.has(f.id));
+        localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(cleaned));
+      } catch {}
+    }
 
-export const DEFAULT_STOCK_LOGS: StockMovementLog[] = [
-  {
-    id: 'log-001',
-    timestamp: '2026-10-04T06:30:00Z',
-    fruit_name: 'Jeruk Medan Manis',
-    unit: 'kg',
-    type: 'KULAKAN_MASUK',
-    qty_change: 48.0,
-    stock_after: 120.0,
-    reference_id: 'inb-001',
-    reference_note: 'Kulakan Pasar Induk Kramat Jati (Beli 50kg, susut 2kg, bersih masuk 48kg)',
-    operator_name: 'Hendra Wijaya',
-  },
-  {
-    id: 'log-002',
-    timestamp: '2026-10-04T08:00:00Z',
-    fruit_name: 'Jeruk Medan Manis',
-    unit: 'kg',
-    type: 'CANVAS_BAWA',
-    qty_change: -10.0,
-    stock_after: 110.0,
-    reference_id: 'cnv-001',
-    reference_note: 'Dibawa kurir Dimas Kurniawan canvas keliling',
-    operator_name: 'Hendra Wijaya',
-  },
-  {
-    id: 'log-003',
-    timestamp: '2026-10-04T12:30:00Z',
-    fruit_name: 'Jeruk Medan Manis',
-    unit: 'kg',
-    type: 'CANVAS_RETURN',
-    qty_change: 8.0,
-    stock_after: 118.0,
-    reference_id: 'cnv-001',
-    reference_note: 'Sisa canvas Dimas Kurniawan kembali ke gudang (laku 2kg, kembali 8kg)',
-    operator_name: 'Hendra Wijaya',
-  },
-];
+    // Clean orders
+    const rawOrd = localStorage.getItem(STORAGE_ORDERS);
+    if (rawOrd) {
+      try {
+        const ords: Order[] = JSON.parse(rawOrd);
+        const cleaned = ords.filter((o) => !mockIds.has(o.id));
+        localStorage.setItem(STORAGE_ORDERS, JSON.stringify(cleaned));
+      } catch {}
+    }
+
+    // Clean inbounds
+    const rawInb = localStorage.getItem(STORAGE_STOCK_INBOUNDS);
+    if (rawInb) {
+      try {
+        const inbs: StockInbound[] = JSON.parse(rawInb);
+        const cleaned = inbs.filter((i) => !mockIds.has(i.id));
+        localStorage.setItem(STORAGE_STOCK_INBOUNDS, JSON.stringify(cleaned));
+      } catch {}
+    }
+
+    // Clean canvas trips
+    const rawTrips = localStorage.getItem(STORAGE_CANVAS_TRIPS);
+    if (rawTrips) {
+      try {
+        const trips: CanvasTrip[] = JSON.parse(rawTrips);
+        const cleaned = trips.filter((t) => !mockIds.has(t.id));
+        localStorage.setItem(STORAGE_CANVAS_TRIPS, JSON.stringify(cleaned));
+      } catch {}
+    }
+
+    // Clean stock logs
+    const rawLogs = localStorage.getItem(STORAGE_STOCK_LOGS);
+    if (rawLogs) {
+      try {
+        const logs: StockMovementLog[] = JSON.parse(rawLogs);
+        const cleaned = logs.filter((l) => !mockIds.has(l.id));
+        localStorage.setItem(STORAGE_STOCK_LOGS, JSON.stringify(cleaned));
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('purgeLegacyMockData error:', err);
+  }
+}
+
+// Run cleanup immediately on load
+if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+  purgeLegacyMockData();
+}
 
 // Default initial master data (used for offline fallback and for initial Supabase seeding if tables are empty)
 export const DEFAULT_PROFILES: Profile[] = [
@@ -386,93 +275,7 @@ function initializeLocalStorageSeed() {
     localStorage.setItem(STORAGE_STOCK_LOGS, JSON.stringify(DEFAULT_STOCK_LOGS));
   }
   if (!localStorage.getItem(STORAGE_ORDERS)) {
-    const today = new Date().toISOString().slice(0, 10);
-    const demoOrders: Order[] = [
-      {
-        id: 'ord-001',
-        order_number: 'PB-20261002-101',
-        customer_name: 'Kopi Kenanga Pajajaran',
-        customer_phone: '081234567890',
-        delivery_address: 'Jl. Pajajaran No. 45, Bogor Tengah',
-        zone_id: 'zone-001',
-        latitude: -6.595038,
-        longitude: 106.807719,
-        order_items: [
-          { id: 'i1', item_name: 'Pisang Cavendish Super', quantity: 2, unit: 'dus', price: 185000, subtotal: 370000 },
-          { id: 'i2', item_name: 'Lemon California Segar', quantity: 5, unit: 'kg', price: 25000, subtotal: 125000 },
-        ],
-        items_summary: 'Pisang Cavendish Super (2 dus), Lemon California Segar (5 kg)',
-        total_amount: 495000,
-        payment_method: 'Tunai',
-        payment_status: 'Belum Lunas',
-        status: 'Disiapkan',
-        delivery_slot: '14:00 - 16:00',
-        delivery_date: today,
-        courier_id: 'usr-sales-003', // Assigned to Qinoi
-        courier_name: 'Qinoi',
-        customer_notes: 'Titipkan di kasir Mas Ari, mohon buah diperiksa kematangannya.',
-        created_by: 'usr-owner-001',
-        created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: 'ord-002',
-        order_number: 'PB-20261002-102',
-        customer_name: 'Resto Sunda Baranangsiang',
-        customer_phone: '081388776655',
-        delivery_address: 'Jl. Riau No. 12, Bogor Timur',
-        zone_id: 'zone-002',
-        latitude: -6.606240,
-        longitude: 106.814230,
-        order_items: [
-          { id: 'i3', item_name: 'Semangka Non Biji Merah', quantity: 30, unit: 'kg', price: 9500, subtotal: 285000 },
-          { id: 'i4', item_name: 'Melon Sky Rocket', quantity: 20, unit: 'kg', price: 14000, subtotal: 280000 },
-        ],
-        items_summary: 'Semangka Non Biji Merah (30 kg), Melon Sky Rocket (20 kg)',
-        total_amount: 565000,
-        payment_method: 'QRIS',
-        payment_status: 'Lunas',
-        status: 'Sedang Diantar',
-        delivery_slot: '14:00 - 16:00',
-        delivery_date: today,
-        courier_id: 'usr-sales-004', // Assigned to Fajri
-        courier_name: 'Fajri',
-        customer_notes: 'Masuk lewat pintu samping dapur penerimaan barang.',
-        created_by: 'usr-manager-002',
-        created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: 'ord-003',
-        order_number: 'PB-20261002-099',
-        customer_name: 'Juice Bar Sentul City',
-        customer_phone: '081911224455',
-        delivery_address: 'Ruko Sentul Niaga Blok B-5, Babakan Madang',
-        zone_id: 'zone-003',
-        latitude: -6.558312,
-        longitude: 106.862415,
-        order_items: [
-          { id: 'i5', item_name: 'Alpukat Mentega Super', quantity: 15, unit: 'kg', price: 28000, subtotal: 420000 },
-          { id: 'i6', item_name: 'Buah Naga Merah', quantity: 10, unit: 'kg', price: 18000, subtotal: 180000 },
-        ],
-        items_summary: 'Alpukat Mentega Super (15 kg), Buah Naga Merah (10 kg)',
-        total_amount: 600000,
-        payment_method: 'Tunai',
-        payment_status: 'Lunas',
-        status: 'Selesai',
-        delivery_slot: '08:00 - 10:00',
-        delivery_date: today,
-        courier_id: 'usr-kurir-005', // Assigned to Dimas
-        courier_name: 'Dimas (Kurir Khusus)',
-        customer_notes: 'Uang pas sudah diterima kasir.',
-        delivery_notes: 'Diterima oleh Mbak Maya, uang tunai Rp 600.000 sudah diserahkan.',
-        delivered_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-        created_by: 'usr-owner-001',
-        created_at: new Date(Date.now() - 3600000 * 8).toISOString(),
-        updated_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-      },
-    ];
-    localStorage.setItem(STORAGE_ORDERS, JSON.stringify(demoOrders));
+    localStorage.setItem(STORAGE_ORDERS, JSON.stringify([]));
   }
 }
 
@@ -615,17 +418,8 @@ export const db = {
         await supabase.from('zone_members').upsert(DEFAULT_ZONE_MEMBERS, { onConflict: 'id' });
       }
 
-      // 5. Check Quick Fruits Catalog in Supabase
-      const { data: remoteFruits, error: qfErr } = await supabase.from('quick_fruits').select('id').limit(1);
-      if (!qfErr && (!remoteFruits || remoteFruits.length === 0)) {
-        await supabase.from('quick_fruits').upsert(DEFAULT_QUICK_FRUITS, { onConflict: 'id' });
-      }
-
-      // 6. Check Stock Items in Supabase
-      const { data: remoteStocks, error: stkErr } = await supabase.from('stock_items').select('id').limit(1);
-      if (!stkErr && (!remoteStocks || remoteStocks.length === 0)) {
-        await supabase.from('stock_items').upsert(DEFAULT_STOCK_ITEMS, { onConflict: 'id' });
-      }
+      // 5. Quick Fruits & Stock Items are managed directly by users in Supabase,
+      // never seed with artificial mock data.
     } catch (err) {
       console.warn('Initial Supabase master data check error:', err);
     }
@@ -1148,6 +942,10 @@ export const db = {
       );
     }
     return list;
+  },
+
+  async getAllProspects(): Promise<Prospect[]> {
+    return this.getProspects(null);
   },
 
   async getProspectById(id: string): Promise<Prospect | null> {
@@ -1748,6 +1546,7 @@ export const db = {
   async getOrders(currentUser?: Profile | null, filterCourierId?: string): Promise<Order[]> {
     const rawLocal = localStorage.getItem(STORAGE_ORDERS);
     let localList: Order[] = rawLocal ? JSON.parse(rawLocal) : [];
+    localList = localList.filter((o) => !o.id.startsWith('ord-00'));
     if (localList.length === 0) {
       localList = this.getLocalOrders();
     }
@@ -1859,7 +1658,7 @@ export const db = {
 
   getLocalOrders(currentUser?: Profile | null, filterCourierId?: string): Order[] {
     const raw = localStorage.getItem(STORAGE_ORDERS);
-    let list: Order[] = raw ? JSON.parse(raw) : [];
+    let list: Order[] = (raw ? JSON.parse(raw) : []).filter((o: Order) => !o.id.startsWith('ord-00'));
     const remittanceMap = this.getRemittanceMap();
 
     // Auto-heal orders missing GPS coordinates from prospects or known coordinates
@@ -2589,33 +2388,15 @@ export const db = {
           .from('quick_fruits')
           .select('*')
           .order('name');
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const rawLocal = localStorage.getItem(STORAGE_QUICK_FRUITS);
-          const localList: QuickFruitItem[] = rawLocal ? JSON.parse(rawLocal) : [];
-          const localMapByName = new Map<string, QuickFruitItem>(localList.map((q) => [q.name.toLowerCase().trim(), q]));
-          const supaNames = new Set(data.map((d: any) => d.name.toLowerCase().trim()));
-
-          const combined = data
-            .filter((d: any) => !deletedNames.has(String(d.name || '').toLowerCase().trim()))
-            .map((d: any) => {
-              const loc = localMapByName.get(d.name.toLowerCase().trim());
-              if (loc && loc.updated_at && (!d.updated_at || new Date(loc.updated_at).getTime() > new Date(d.updated_at).getTime())) {
-                return loc;
-              }
-              return d as QuickFruitItem;
-            });
-
-          for (const loc of localList) {
-            if (!deletedNames.has(loc.name.toLowerCase().trim()) && !supaNames.has(loc.name.toLowerCase().trim())) {
-              combined.push(loc);
-              supabase.from('quick_fruits').upsert([loc], { onConflict: 'name' }).then(() => {}, () => {});
-            }
+        if (!error && Array.isArray(data)) {
+          for (const d of data) {
+            if (d.name) this.removeDeletedFruitRecord(d.name);
           }
-
+          const list = data.map((d: any) => d as QuickFruitItem);
           try {
-            localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(combined));
+            localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
           } catch {}
-          return combined;
+          return list;
         }
       } catch {
         // Fallback to local storage
@@ -2623,15 +2404,13 @@ export const db = {
     }
     const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
     if (!raw) {
-      const defaults = DEFAULT_QUICK_FRUITS.filter((f) => !deletedNames.has(f.name.toLowerCase().trim()));
-      localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(defaults));
-      return defaults;
+      return [];
     }
     try {
       const parsed: QuickFruitItem[] = JSON.parse(raw);
       return parsed.filter((f) => !deletedNames.has(f.name.toLowerCase().trim()));
     } catch {
-      return DEFAULT_QUICK_FRUITS.filter((f) => !deletedNames.has(f.name.toLowerCase().trim()));
+      return [];
     }
   },
 
@@ -2639,9 +2418,14 @@ export const db = {
     data: { name: string; unit: string; price: number; emoji?: string; is_active?: boolean },
     currentUser: Profile
   ): Promise<QuickFruitItem> {
-    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
-      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menambah daftar produk buah.');
+    if (currentUser.role === 'Kurir') {
+      throw new Error('Akses Ditolak: Kurir tidak memiliki izin untuk menambah master produk buah.');
     }
+    if (!data.name?.trim()) {
+      throw new Error('Nama buah wajib diisi.');
+    }
+    this.removeDeletedFruitRecord(data.name);
+
     const now = new Date().toISOString();
     const newItem: QuickFruitItem = {
       id: `qf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -2671,8 +2455,15 @@ export const db = {
     }
 
     const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
-    const list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
-    list.push(newItem);
+    let list: QuickFruitItem[] = raw ? JSON.parse(raw) : [...DEFAULT_QUICK_FRUITS];
+    const existingIdx = list.findIndex(
+      (q) => q.name.toLowerCase().trim() === newItem.name.toLowerCase().trim()
+    );
+    if (existingIdx !== -1) {
+      list[existingIdx] = newItem;
+    } else {
+      list.push(newItem);
+    }
     localStorage.setItem(STORAGE_QUICK_FRUITS, JSON.stringify(list));
 
     // Also auto-sync/create in stock_items warehouse master!
@@ -2698,7 +2489,8 @@ export const db = {
         stockList.unshift(newStockItem);
         localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(stockList));
         if (supabase) {
-          supabase.from('stock_items').upsert([newStockItem], { onConflict: 'fruit_name' }).then(() => {}, () => {});
+          const cleanItem = this.cleanStockItemPayloadForSupabase(newStockItem);
+          supabase.from('stock_items').upsert([cleanItem], { onConflict: 'fruit_name' }).then(() => {}, () => {});
         }
       }
     } catch {}
@@ -2711,8 +2503,8 @@ export const db = {
     updates: Partial<QuickFruitItem>,
     currentUser: Profile
   ): Promise<QuickFruitItem> {
-    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
-      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mengubah daftar produk buah.');
+    if (currentUser.role === 'Kurir') {
+      throw new Error('Akses Ditolak: Kurir tidak memiliki izin untuk mengubah produk buah.');
     }
     const now = new Date().toISOString();
     const raw = localStorage.getItem(STORAGE_QUICK_FRUITS);
@@ -3006,37 +2798,32 @@ export const db = {
   },
 
   async getStockItems(): Promise<StockItem[]> {
+    const deletedNames = this.getDeletedFruitNames();
     const rawLocal = localStorage.getItem(STORAGE_STOCK_ITEMS);
-    let localList: StockItem[] = rawLocal ? JSON.parse(rawLocal) : [...DEFAULT_STOCK_ITEMS];
+    let localList: StockItem[] = [];
+    if (rawLocal) {
+      try {
+        localList = JSON.parse(rawLocal);
+      } catch {}
+    }
+    localList = localList.filter((s) => !deletedNames.has(s.fruit_name.toLowerCase().trim()));
 
     const supabase = getSupabase();
     if (supabase) {
       try {
         const { data, error } = await supabase.from('stock_items').select('*').order('fruit_name');
         if (!error && Array.isArray(data)) {
+          for (const d of data) {
+            if (d.fruit_name) this.removeDeletedFruitRecord(d.fruit_name);
+          }
           const localMapById = new Map<string, StockItem>(localList.map((s) => [s.id, s]));
           const localMapByName = new Map<string, StockItem>(
             localList.map((s) => [s.fruit_name.toLowerCase().trim(), s])
           );
 
-          const combined = data.map((d: any) => {
+          const combined: StockItem[] = data.map((d: any) => {
             const loc =
               localMapById.get(d.id) || localMapByName.get(d.fruit_name.toLowerCase().trim());
-            // If local item has a more recent updated_at timestamp, use local item and sync to Supabase
-            if (
-              loc &&
-              loc.updated_at &&
-              (!d.updated_at || new Date(loc.updated_at).getTime() > new Date(d.updated_at).getTime())
-            ) {
-              const cleanLoc = this.cleanStockItemPayloadForSupabase(loc);
-              supabase
-                .from('stock_items')
-                .update(cleanLoc)
-                .eq('id', d.id)
-                .then(() => {}, () => {});
-              return { ...loc, current_stock: loc.current_stock };
-            }
-            // Preserve rich client properties like emoji and latest_selling_price if present in local
             return {
               ...d,
               current_stock: Number(d.current_stock) || 0,
@@ -3048,38 +2835,16 @@ export const db = {
             } as StockItem;
           });
 
-          const supaIds = new Set(data.map((d: any) => d.id));
-          const supaNames = new Set(data.map((d: any) => d.fruit_name.toLowerCase().trim()));
-
-          for (const loc of localList) {
-            if (!supaIds.has(loc.id) && !supaNames.has(loc.fruit_name.toLowerCase().trim())) {
-              combined.push(loc);
-              const cleanLoc = this.cleanStockItemPayloadForSupabase(loc);
-              supabase
-                .from('stock_items')
-                .upsert([cleanLoc], { onConflict: 'fruit_name' })
-                .then(() => {}, () => {});
-            }
-          }
-
           try {
             localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(combined));
           } catch {}
-          return combined as StockItem[];
+          return combined;
         }
       } catch (err) {
         console.warn('Supabase getStockItems error, falling back to local storage:', err);
       }
     }
-    if (rawLocal === null) {
-      localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(DEFAULT_STOCK_ITEMS));
-      return DEFAULT_STOCK_ITEMS;
-    }
-    try {
-      return JSON.parse(rawLocal);
-    } catch {
-      return DEFAULT_STOCK_ITEMS;
-    }
+    return localList;
   },
 
   async createStockItem(
@@ -3094,28 +2859,27 @@ export const db = {
     },
     currentUser: Profile
   ): Promise<StockItem> {
-    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
-      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat menambah jenis buah baru.');
+    if (currentUser.role === 'Kurir') {
+      throw new Error('Akses Ditolak: Kurir tidak memiliki izin untuk menambah jenis buah baru.');
     }
     if (!data.fruit_name?.trim()) {
       throw new Error('Nama buah wajib diisi.');
     }
+    this.removeDeletedFruitRecord(data.fruit_name);
+
     const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
     let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
 
-    const exists = list.some(
+    const existingIdx = list.findIndex(
       (s) => s.fruit_name.toLowerCase().trim() === data.fruit_name.toLowerCase().trim()
     );
-    if (exists) {
-      throw new Error(`Buah "${data.fruit_name}" sudah ada dalam master stok.`);
-    }
 
     const newItem: StockItem = {
-      id: generateUniqueId('stk'),
+      id: existingIdx !== -1 ? list[existingIdx].id : generateUniqueId('stk'),
       fruit_name: data.fruit_name.trim(),
       unit: data.unit?.trim() || 'kg',
       current_stock: Math.max(0, Number(data.current_stock) || 0),
-      canvas_allocated_stock: 0,
+      canvas_allocated_stock: existingIdx !== -1 ? list[existingIdx].canvas_allocated_stock : 0,
       min_stock_alert: Number(data.min_stock_alert) || 10,
       avg_cost_price: Number(data.avg_cost_price) || 0,
       latest_selling_price: Number(data.latest_selling_price) || 0,
@@ -3123,7 +2887,11 @@ export const db = {
       updated_at: new Date().toISOString(),
     };
 
-    list.unshift(newItem);
+    if (existingIdx !== -1) {
+      list[existingIdx] = newItem;
+    } else {
+      list.unshift(newItem);
+    }
     localStorage.setItem(STORAGE_STOCK_ITEMS, JSON.stringify(list));
 
     const supabase = getSupabase();
@@ -3239,8 +3007,11 @@ export const db = {
     updates: Partial<StockItem>,
     currentUser: Profile
   ): Promise<StockItem> {
-    if (currentUser.role !== 'Owner' && currentUser.role !== 'Manager') {
-      throw new Error('Akses Ditolak: Hanya Owner dan Manager yang dapat mengubah data stok.');
+    if (currentUser.role === 'Kurir') {
+      throw new Error('Akses Ditolak: Kurir tidak memiliki izin untuk mengubah data stok.');
+    }
+    if (updates.fruit_name) {
+      this.removeDeletedFruitRecord(updates.fruit_name);
     }
     const raw = localStorage.getItem(STORAGE_STOCK_ITEMS);
     let list: StockItem[] = raw ? JSON.parse(raw) : [...DEFAULT_STOCK_ITEMS];
@@ -3749,11 +3520,13 @@ export const db = {
 
     for (const item of tripItems) {
       const targetName = item.fruit_name.toLowerCase().trim();
-      const stock = stockList.find(
+      const exactStock = stockList.find(
+        (s) => s.fruit_name.toLowerCase().trim() === targetName
+      );
+      const stock = exactStock || stockList.find(
         (s) =>
-          s.fruit_name.toLowerCase().trim() === targetName ||
-          targetName.includes(s.fruit_name.toLowerCase().trim()) ||
-          s.fruit_name.toLowerCase().trim().includes(targetName)
+          s.fruit_name.toLowerCase().trim().startsWith(targetName) ||
+          targetName.startsWith(s.fruit_name.toLowerCase().trim())
       );
       if (stock) {
         if (stock.current_stock <= 0) {
@@ -3796,11 +3569,13 @@ export const db = {
     // Allocate stock: deduct from current_stock, add to canvas_allocated_stock
     for (const item of tripItems) {
       const targetName = item.fruit_name.toLowerCase().trim();
-      const stock = stockList.find(
+      const exactStock = stockList.find(
+        (s) => s.fruit_name.toLowerCase().trim() === targetName
+      );
+      const stock = exactStock || stockList.find(
         (s) =>
-          s.fruit_name.toLowerCase().trim() === targetName ||
-          targetName.includes(s.fruit_name.toLowerCase().trim()) ||
-          s.fruit_name.toLowerCase().trim().includes(targetName)
+          s.fruit_name.toLowerCase().trim().startsWith(targetName) ||
+          targetName.startsWith(s.fruit_name.toLowerCase().trim())
       );
       if (stock) {
         stock.current_stock = Math.max(0, Number((stock.current_stock - item.brought_qty).toFixed(2)));

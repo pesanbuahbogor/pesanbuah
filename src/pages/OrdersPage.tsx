@@ -226,7 +226,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         db.getOrders(currentUser),
         db.getProfiles(),
         db.getZones(),
-        db.getProspects(currentUser),
+        db.getAllProspects(),
         db.getCanvasTrips(currentUser),
         db.getStockItems(),
       ]);
@@ -1262,115 +1262,123 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Line 2: Fast Action Bar */}
-                  <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 flex-wrap text-xs">
-                    {/* 1-Tap Google Maps GPS Route */}
-                    <a
-                      href={mapsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer"
-                      title={hasGps ? 'Buka navigasi rute turn-by-turn ke titik GPS presisi' : 'Buka Google Maps'}
-                    >
-                      <Navigation className="w-3 h-3" />
-                      <span>{hasGps ? 'GPS' : 'Maps'}</span>
-                    </a>
+                  {/* Line 2: Fast Action Bar (Mobile-first responsive 2-row layout) */}
+                  <div className="pt-1.5 border-t border-gray-100 space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2 text-xs">
+                    {/* Primary Status Advance + Selector */}
+                    <div className="flex items-center gap-1.5 flex-1">
+                      {order.status === 'Diterima' && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(order, 'Disiapkan')}
+                          className="flex-1 sm:flex-initial px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <Package className="w-3 h-3" />
+                          <span>Siapkan</span>
+                        </button>
+                      )}
 
-                    {/* 1-Tap WA Customer */}
-                    <a
-                      href={waUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer"
-                      title="Chat WhatsApp Pelanggan"
-                    >
-                      <Phone className="w-3 h-3" />
-                      <span>WA</span>
-                    </a>
+                      {order.status === 'Disiapkan' && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(order, 'Sedang Diantar')}
+                          className="flex-1 sm:flex-initial px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"
+                          title="Ubah status order menjadi Sedang Diantar"
+                        >
+                          <Truck className="w-3 h-3" />
+                          <span>{order.courier_id === currentUser?.id ? 'Antar' : 'Ambil & Antar'}</span>
+                        </button>
+                      )}
 
-                    {/* Status Dropdown Selector */}
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleQuickStatusChange(order, e.target.value as OrderStatus)}
-                      className="px-1.5 py-1 bg-white border border-gray-300 hover:border-emerald-500 rounded-lg text-[10px] sm:text-[11px] font-bold text-gray-800 outline-hidden cursor-pointer shadow-2xs"
-                      title="Ubah status order langsung"
-                    >
-                      <option value="Diterima">Diterima</option>
-                      <option value="Disiapkan">Disiapkan</option>
-                      <option value="Sedang Diantar">Sedang Diantar</option>
-                      <option value="Selesai">Selesai</option>
-                      <option value="Dibatalkan">Dibatalkan</option>
-                    </select>
+                      {order.status === 'Sedang Diantar' && (
+                        <button
+                          type="button"
+                          onClick={() => setCompletionOrder(order)}
+                          className="flex-1 sm:flex-initial px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Selesai</span>
+                        </button>
+                      )}
 
-                    {/* 1-Tap Advance Order Status Button */}
-                    {order.status === 'Diterima' && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickStatusChange(order, 'Disiapkan')}
-                        className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer"
+                      {/* Status Dropdown Selector */}
+                      <select
+                        value={order.status}
+                        onChange={(e) => handleQuickStatusChange(order, e.target.value as OrderStatus)}
+                        className="h-8 px-2 bg-white border border-gray-300 hover:border-emerald-500 rounded-lg text-xs font-bold text-gray-800 outline-hidden cursor-pointer shadow-2xs"
+                        title="Ubah status order langsung"
                       >
-                        Siapkan
-                      </button>
-                    )}
+                        <option value="Diterima">1. Diterima</option>
+                        <option value="Disiapkan">2. Disiapkan</option>
+                        <option value="Sedang Diantar">3. Sedang Diantar</option>
+                        <option value="Selesai">4. Selesai</option>
+                        <option value="Dibatalkan">5. Dibatalkan</option>
+                      </select>
+                    </div>
 
-                    {order.status === 'Disiapkan' && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickStatusChange(order, 'Sedang Diantar')}
-                        className="px-2 py-1 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-[11px] font-bold shadow-2xs transition cursor-pointer flex items-center gap-0.5"
-                        title="Ubah status order menjadi Sedang Diantar"
+                    {/* Secondary Action Buttons */}
+                    <div className="flex items-center gap-1.5 justify-between sm:justify-end">
+                      {/* 1-Tap Google Maps GPS Route */}
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+                        title={hasGps ? 'Buka navigasi rute turn-by-turn ke titik GPS presisi' : 'Buka Google Maps'}
                       >
-                        <Truck className="w-3 h-3" /> {order.courier_id === currentUser?.id ? 'Antar' : 'Ambil & Antar'}
-                      </button>
-                    )}
+                        <Navigation className="w-3 h-3" />
+                        <span>{hasGps ? 'GPS' : 'Maps'}</span>
+                      </a>
 
-                    {order.status === 'Sedang Diantar' && (
-                      <button
-                        type="button"
-                        onClick={() => setCompletionOrder(order)}
-                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition cursor-pointer flex items-center gap-0.5"
+                      {/* 1-Tap WA Customer */}
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+                        title="Chat WhatsApp Pelanggan"
                       >
-                        <CheckCircle2 className="w-3 h-3" /> Selesai
-                      </button>
-                    )}
+                        <Phone className="w-3 h-3" />
+                        <span>WA</span>
+                      </a>
 
-                    {/* 1-Tap Remittance Action */}
-                    {order.payment_method === 'Tunai' && order.status === 'Selesai' && (
-                      order.courier_remittance_status !== 'Sudah Disetor ke Kas' ? (
-                        canManageRemittance ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRemitOrderPayment(order.id)}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg text-white shadow-2xs transition cursor-pointer bg-emerald-600 hover:bg-emerald-700"
-                            title="Terima setoran masuk kas perusahaan"
-                          >
-                            <Coins className="w-3 h-3" />
-                            <span>Terima Kas</span>
-                          </button>
+                      {/* 1-Tap Remittance Action */}
+                      {order.payment_method === 'Tunai' && order.status === 'Selesai' && (
+                        order.courier_remittance_status !== 'Sudah Disetor ke Kas' ? (
+                          canManageRemittance ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemitOrderPayment(order.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-bold rounded-lg text-white shadow-2xs transition cursor-pointer bg-amber-600 hover:bg-amber-700 shrink-0"
+                              title="Terima setoran masuk kas perusahaan"
+                            >
+                              <Coins className="w-3 h-3" />
+                              <span>Terima Kas</span>
+                            </button>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-md shrink-0"
+                              title="Uang fisik masih di tangan kurir"
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5 text-amber-600" /> Di Kurir
+                            </span>
+                          )
                         ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-md"
-                            title="Uang fisik masih di tangan kurir (menunggu disetor ke Kasir/Owner)"
-                          >
-                            <AlertTriangle className="w-2.5 h-2.5 text-amber-600" /> Di Kurir
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md shrink-0">
+                            <Check className="w-2.5 h-2.5 text-emerald-600" /> Kas Masuk
                           </span>
                         )
-                      ) : (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">
-                          <Check className="w-2.5 h-2.5 text-emerald-600" /> Kas Masuk
-                        </span>
-                      )
-                    )}
+                      )}
 
-                    {/* Expand toggle */}
-                    <button
-                      type="button"
-                      onClick={() => toggleOrderExpand(order.id)}
-                      className="ml-auto inline-flex items-center gap-0.5 px-2 py-1 text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-md text-[11px] font-medium cursor-pointer"
-                    >
-                      <span>Rincian</span>
-                      <ChevronDown className="w-2.5 h-2.5" />
-                    </button>
+                      {/* Expand toggle */}
+                      <button
+                        type="button"
+                        onClick={() => toggleOrderExpand(order.id)}
+                        className="inline-flex items-center gap-0.5 px-2 py-1.5 text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-lg text-xs font-medium cursor-pointer shrink-0"
+                      >
+                        <span>Rincian</span>
+                        <ChevronDown className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -1459,114 +1467,123 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                   </div>
 
                   {/* FAST ACTION BAR (One-Tap on Mobile) */}
-                  <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 flex-wrap">
-                    {/* 1-Tap Google Maps GPS Route */}
-                    <a
-                      href={mapsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
-                      title={hasGps ? 'Buka navigasi rute turn-by-turn ke titik GPS presisi' : 'Buka pencarian alamat di Google Maps'}
-                    >
-                      <Navigation className="w-3 h-3" />
-                      <span>{hasGps ? 'Rute GPS' : 'Maps'}</span>
-                    </a>
+                  {/* FAST ACTION BAR: Mobile-first responsive 2-row layout */}
+                  <div className="pt-2 border-t border-gray-100 space-y-2 sm:space-y-0 sm:flex sm:items-center sm:gap-2">
+                    {/* Primary Status Advance + Selector */}
+                    <div className="flex items-center gap-1.5 flex-1">
+                      {order.status === 'Diterima' && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(order, 'Disiapkan')}
+                          className="flex-1 sm:flex-initial px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Package className="w-3.5 h-3.5" />
+                          <span>Siapkan</span>
+                        </button>
+                      )}
 
-                    {/* 1-Tap WA Customer */}
-                    <a
-                      href={waUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
-                      title="Chat WhatsApp Pelanggan"
-                    >
-                      <Phone className="w-3 h-3" />
-                      <span>WA</span>
-                    </a>
+                      {order.status === 'Disiapkan' && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatusChange(order, 'Sedang Diantar')}
+                          className="flex-1 sm:flex-initial px-3 py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-xl text-xs font-extrabold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                          title="Ubah status pesanan menjadi Sedang Diantar (Kurir Berangkat)"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          <span>{order.courier_id === currentUser?.id ? 'Mulai Antar' : 'Ambil & Mulai Antar'}</span>
+                        </button>
+                      )}
 
-                    {/* Status Dropdown Selector */}
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleQuickStatusChange(order, e.target.value as OrderStatus)}
-                      className="px-2 py-1.5 bg-white border border-gray-300 hover:border-emerald-500 rounded-lg text-xs font-bold text-gray-800 outline-hidden cursor-pointer shadow-2xs"
-                      title="Ubah status order langsung"
-                    >
-                      <option value="Diterima">1. Diterima</option>
-                      <option value="Disiapkan">2. Disiapkan</option>
-                      <option value="Sedang Diantar">3. Sedang Diantar</option>
-                      <option value="Selesai">4. Selesai</option>
-                      <option value="Dibatalkan">5. Dibatalkan</option>
-                    </select>
+                      {order.status === 'Sedang Diantar' && (
+                        <button
+                          type="button"
+                          onClick={() => setCompletionOrder(order)}
+                          className="flex-1 sm:flex-initial px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Selesai Antar</span>
+                        </button>
+                      )}
 
-                    {/* 1-Tap Advance Order Status Button */}
-                    {order.status === 'Diterima' && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickStatusChange(order, 'Disiapkan')}
-                        className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+                      {/* Status Dropdown Selector */}
+                      <select
+                        value={order.status}
+                        onChange={(e) => handleQuickStatusChange(order, e.target.value as OrderStatus)}
+                        className="h-9 px-2 bg-white border border-gray-300 hover:border-emerald-500 rounded-xl text-xs font-bold text-gray-800 outline-hidden cursor-pointer shadow-2xs"
+                        title="Ubah status order langsung"
                       >
-                        Siapkan
-                      </button>
-                    )}
+                        <option value="Diterima">1. Diterima</option>
+                        <option value="Disiapkan">2. Disiapkan</option>
+                        <option value="Sedang Diantar">3. Sedang Diantar</option>
+                        <option value="Selesai">4. Selesai</option>
+                        <option value="Dibatalkan">5. Dibatalkan</option>
+                      </select>
+                    </div>
 
-                    {order.status === 'Disiapkan' && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickStatusChange(order, 'Sedang Diantar')}
-                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1"
-                        title="Ubah status pesanan menjadi Sedang Diantar (Kurir Berangkat)"
+                    {/* Secondary Action Buttons (Maps, WA, Remittance, Detail) */}
+                    <div className="flex items-center gap-1.5 justify-between sm:justify-end">
+                      {/* 1-Tap Google Maps GPS Route */}
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer"
+                        title={hasGps ? 'Buka rute navigasi turn-by-turn ke titik GPS presisi' : 'Buka Google Maps'}
                       >
-                        <Truck className="w-3 h-3" /> {order.courier_id === currentUser?.id ? 'Mulai Antar' : 'Ambil & Mulai Antar'}
-                      </button>
-                    )}
+                        <Navigation className="w-3.5 h-3.5" />
+                        <span>{hasGps ? 'Rute GPS' : 'Maps'}</span>
+                      </a>
 
-                    {order.status === 'Sedang Diantar' && (
-                      <button
-                        type="button"
-                        onClick={() => setCompletionOrder(order)}
-                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1"
+                      {/* 1-Tap WA Customer */}
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer"
+                        title="Chat WhatsApp Pelanggan"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Selesai Antar
-                      </button>
-                    )}
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>WA</span>
+                      </a>
 
-                    {/* 1-Tap Remittance Action (Hanya Owner/Manager yang berhak menerima uang kas masuk) */}
-                    {order.payment_method === 'Tunai' && order.status === 'Selesai' && (
-                      order.courier_remittance_status !== 'Sudah Disetor ke Kas' ? (
-                        canManageRemittance ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRemitOrderPayment(order.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg text-white shadow-2xs transition cursor-pointer bg-emerald-600 hover:bg-emerald-700"
-                            title="Terima & verifikasi setoran masuk kas kantor"
-                          >
-                            <Coins className="w-3 h-3" />
-                            <span>Terima Kas</span>
-                          </button>
+                      {/* Remittance indicator / button */}
+                      {order.payment_method === 'Tunai' && order.status === 'Selesai' && (
+                        order.courier_remittance_status !== 'Sudah Disetor ke Kas' ? (
+                          canManageRemittance ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemitOrderPayment(order.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl text-white shadow-2xs transition cursor-pointer bg-amber-600 hover:bg-amber-700 shrink-0"
+                              title="Terima & verifikasi setoran masuk kas kantor"
+                            >
+                              <Coins className="w-3.5 h-3.5" />
+                              <span>Terima Kas</span>
+                            </button>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-1 rounded-xl shrink-0"
+                              title="Uang masih dipegang kurir"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-amber-600" /> Di Kurir
+                            </span>
+                          )
                         ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-1 rounded-lg"
-                            title="Uang masih dipegang kurir, menunggu disetor ke kasir/owner"
-                          >
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Uang di Kurir
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded-xl shrink-0">
+                            <Check className="w-3 h-3 text-emerald-600" /> Kas Beres
                           </span>
                         )
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded-lg">
-                          <Check className="w-3 h-3 text-emerald-600" /> Kas Masuk
-                        </span>
-                      )
-                    )}
+                      )}
 
-                    {/* Expand/Collapse details toggle */}
-                    <button
-                      type="button"
-                      onClick={() => toggleOrderExpand(order.id)}
-                      className="ml-auto inline-flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-lg text-xs font-medium cursor-pointer"
-                    >
-                      <span>{isExpanded ? 'Tutup' : 'Rincian'}</span>
-                      {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
+                      {/* Expand/Collapse details toggle */}
+                      <button
+                        type="button"
+                        onClick={() => toggleOrderExpand(order.id)}
+                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-bold cursor-pointer transition shrink-0"
+                      >
+                        <span>{isExpanded ? 'Tutup' : 'Rincian'}</span>
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
 
                   {/* EXPANDABLE SECTION (Full details when opened) */}
@@ -2152,6 +2169,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         prospects={prospects}
         zones={zones}
         couriers={availableCouriers}
+        stockItems={stockItems}
       />
 
       {/* Delivery Completion & Payment Confirmation Modal */}

@@ -312,24 +312,5 @@ INSERT INTO public.business_types (id, name, active) VALUES
     ('bt-008', 'Pedagang Keliling / UMKM', true)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.quick_fruits (id, name, unit, price, emoji, is_active) VALUES
-    ('qf-1', 'Jeruk Medan Manis', 'kg', 28000, '🍊', true),
-    ('qf-2', 'Jeruk Peras Segar', 'kg', 18000, '🍊', true),
-    ('qf-3', 'Pisang Cavendish Super', 'dus', 185000, '🍌', true),
-    ('qf-4', 'Lemon California Segar', 'kg', 25000, '🍋', true),
-    ('qf-5', 'Semangka Non Biji Merah', 'kg', 9500, '🍉', true),
-    ('qf-6', 'Melon Sky Rocket', 'kg', 14000, '🍈', true),
-    ('qf-7', 'Alpukat Mentega Super', 'kg', 28000, '🥑', true),
-    ('qf-8', 'Apel Fuji Segar', 'kg', 35000, '🍎', true)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.stock_items (id, fruit_name, unit, current_stock, canvas_allocated_stock, min_stock_alert, avg_cost_price, notes) VALUES
-    ('stk-1', 'Jeruk Medan Manis', 'kg', 120.0, 0, 20, 22000, 'Kondisi segar, grade A'),
-    ('stk-2', 'Jeruk Peras Segar', 'kg', 85.0, 0, 25, 13500, 'Kualitas peras tinggi'),
-    ('stk-3', 'Pisang Cavendish Super', 'dus', 15.0, 0, 5, 150000, 'Kemasan box standar 13kg'),
-    ('stk-4', 'Lemon California Segar', 'kg', 45.0, 0, 10, 19000, 'Asam segar, kulit mulus'),
-    ('stk-5', 'Semangka Non Biji Merah', 'kg', 210.0, 0, 40, 7000, 'Manis renyah, bobot 3-6kg'),
-    ('stk-6', 'Melon Sky Rocket', 'kg', 90.0, 0, 20, 10500, 'Aroma wangi'),
-    ('stk-7', 'Alpukat Mentega Super', 'kg', 60.0, 0, 15, 21000, 'Daging tebal gurih'),
-    ('stk-8', 'Apel Fuji Segar', 'kg', 40.0, 0, 10, 27000, 'Garing manis impor')
-ON CONFLICT (fruit_name) DO NOTHING;
+-- Buah dan inventori gudang dikelola langsung oleh pengguna / database resmi,
+-- tanpa dummy seed buah buatan.

@@ -54,29 +54,20 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
         setCourierId(couriers[0].id);
       }
 
-      if (stockItems.length > 0) {
+      if (items.length === 0 && stockItems.length > 0) {
         const availableItems = stockItems.filter((s) => s.current_stock > 0);
-        const bestStock = availableItems.length > 0 ? availableItems[0] : stockItems[0];
-        const initialQty = bestStock && bestStock.current_stock > 0 ? Math.min(5, bestStock.current_stock) : 0;
+        const bestStock = availableItems.length > 0 ? availableItems[0] : null;
 
-        setItems((prev) => {
-          const validNames = new Set(stockItems.map((s) => s.fruit_name.toLowerCase().trim()));
-          const hasInvalid =
-            prev.length === 0 ||
-            prev.some((it) => !it.fruit_name || !validNames.has(it.fruit_name.toLowerCase().trim()));
-
-          if (hasInvalid) {
-            return [
-              {
-                fruit_name: bestStock.fruit_name,
-                unit: bestStock.unit,
-                brought_qty: initialQty,
-                selling_price: bestStock.latest_selling_price || 0,
-              },
-            ];
-          }
-          return prev;
-        });
+        if (bestStock) {
+          setItems([
+            {
+              fruit_name: bestStock.fruit_name,
+              unit: bestStock.unit,
+              brought_qty: Math.min(5, bestStock.current_stock),
+              selling_price: bestStock.latest_selling_price || 0,
+            },
+          ]);
+        }
       }
     }
   }, [isOpen, couriers, stockItems]);
@@ -87,12 +78,12 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
     const availableItems = stockItems.filter((s) => s.current_stock > 0);
     const chosenNames = new Set(items.map((i) => i.fruit_name.toLowerCase().trim()));
     const unchosen = availableItems.find((s) => !chosenNames.has(s.fruit_name.toLowerCase().trim()));
-    const best = unchosen || availableItems[0] || stockItems[0];
+    const best = unchosen || availableItems[0];
     if (!best) {
-      toastError('Tidak ada komoditas buah dalam stok gudang.');
+      toastError('Semua stok buah gudang yang tersedia (> 0) sudah dipilih, atau tidak ada stok tersisa.');
       return;
     }
-    const initialQty = best.current_stock > 0 ? Math.min(5, best.current_stock) : 0;
+    const initialQty = Math.min(5, best.current_stock);
     setItems((prev) => [
       ...prev,
       {
@@ -105,32 +96,26 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
   };
 
   const handleRemoveItem = (idx: number) => {
-    if (items.length <= 1) {
-      toastError('Minimal harus ada 1 buah yang dibawa.');
-      return;
-    }
     setItems((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleFruitSelect = (idx: number, fruitName: string) => {
-    const matched = stockItems.find(
-      (s) =>
-        s.fruit_name.toLowerCase().trim() === fruitName.toLowerCase().trim() ||
-        fruitName.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
-        s.fruit_name.toLowerCase().trim().includes(fruitName.toLowerCase().trim())
+    const exactStock = stockItems.find(
+      (s) => s.fruit_name.toLowerCase().trim() === fruitName.toLowerCase().trim()
     );
+    if (!exactStock) return;
     setItems((prev) => {
       const next = [...prev];
-      const maxAvailable = matched ? matched.current_stock : 0;
+      const maxAvailable = exactStock.current_stock;
       const currentBrought = Number(next[idx]?.brought_qty) || 0;
       const clampedBrought =
         maxAvailable <= 0 ? 0 : Math.min(currentBrought > 0 ? currentBrought : 5, maxAvailable);
 
       next[idx] = {
         ...next[idx],
-        fruit_name: matched ? matched.fruit_name : fruitName,
-        unit: matched ? matched.unit : (next[idx]?.unit || 'kg'),
-        selling_price: matched ? matched.latest_selling_price : (next[idx]?.selling_price || 0),
+        fruit_name: exactStock.fruit_name,
+        unit: exactStock.unit,
+        selling_price: exactStock.latest_selling_price || 0,
         brought_qty: clampedBrought,
       };
       return next;
@@ -143,10 +128,7 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
       if (field === 'brought_qty') {
         const item = next[idx];
         const stockAvail = stockItems.find(
-          (s) =>
-            s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim() ||
-            item.fruit_name.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
-            s.fruit_name.toLowerCase().trim().includes(item.fruit_name.toLowerCase().trim())
+          (s) => s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim()
         );
         let numVal = Number(val);
         if (isNaN(numVal) || numVal < 0) numVal = 0;
@@ -183,17 +165,19 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
       return;
     }
 
+    if (items.length === 0) {
+      toastError('Tambahkan minimal satu jenis buah yang memiliki stok untuk dibawa canvas.');
+      return;
+    }
+
     // Validate quantities against warehouse stock
     for (const item of items) {
-      const currentStock = stockItems.find(
-        (s) =>
-          s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim() ||
-          item.fruit_name.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
-          s.fruit_name.toLowerCase().trim().includes(item.fruit_name.toLowerCase().trim())
+      const exactStock = stockItems.find(
+        (s) => s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim()
       );
-      if (!currentStock || currentStock.current_stock <= 0) {
+      if (!exactStock || exactStock.current_stock <= 0) {
         toastError(
-          `Stok "${item.fruit_name}" di gudang sedang habis (0 ${currentStock?.unit || 'kg'}). Tidak dapat dibawa canvas keliling.`
+          `Stok "${item.fruit_name}" di gudang sedang habis (0 ${exactStock?.unit || 'kg'}). Hapus baris ini dengan ikon tong sampah atau ganti ke buah lain.`
         );
         return;
       }
@@ -201,9 +185,9 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
         toastError(`Jumlah bawa untuk "${item.fruit_name}" harus lebih dari 0.`);
         return;
       }
-      if (Number(item.brought_qty) > currentStock.current_stock) {
+      if (Number(item.brought_qty) > exactStock.current_stock) {
         toastError(
-          `Stok "${item.fruit_name}" di gudang hanya tersisa ${currentStock.current_stock} ${currentStock.unit}, tidak cukup untuk bawa ${item.brought_qty} ${item.unit}.`
+          `Stok "${item.fruit_name}" di gudang hanya tersisa ${exactStock.current_stock} ${exactStock.unit}, tidak cukup untuk bawa ${item.brought_qty} ${item.unit}.`
         );
         return;
       }
@@ -351,13 +335,10 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
                           )}
                         </div>
                         {(() => {
-                          const matchedOption = stockItems.find(
-                            (s) =>
-                              s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim() ||
-                              item.fruit_name.toLowerCase().trim().includes(s.fruit_name.toLowerCase().trim()) ||
-                              s.fruit_name.toLowerCase().trim().includes(item.fruit_name.toLowerCase().trim())
+                          const exactStock = stockItems.find(
+                            (s) => s.fruit_name.toLowerCase().trim() === item.fruit_name.toLowerCase().trim()
                           );
-                          const activeValue = matchedOption ? matchedOption.fruit_name : (stockItems[0]?.fruit_name || item.fruit_name);
+                          const activeValue = exactStock ? exactStock.fruit_name : item.fruit_name;
                           return (
                             <select
                               value={activeValue}
@@ -366,6 +347,7 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
                                 isOutOfStock ? 'border-rose-400' : 'border-gray-300'
                               }`}
                             >
+                              <option value="">-- Pilih Buah dari Gudang --</option>
                               {stockItems.map((s) => (
                                 <option key={s.id} value={s.fruit_name} disabled={s.current_stock <= 0}>
                                   {s.fruit_name} {s.current_stock <= 0 ? `(HABIS - 0 ${s.unit})` : `(Sisa Gudang: ${s.current_stock} ${s.unit})`}
@@ -376,16 +358,14 @@ export const CanvasTripModal: React.FC<CanvasTripModalProps> = ({
                         })()}
                       </div>
 
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(idx)}
-                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer mt-4"
-                          title="Hapus baris"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer mt-4"
+                        title="Hapus baris buah ini"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 border-t border-gray-100">

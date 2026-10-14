@@ -83,7 +83,10 @@ export const FruitMasterModal: React.FC<FruitMasterModalProps> = ({
       toastError('Nama buah wajib diisi.');
       return;
     }
-    if (!currentUser) return;
+    if (!currentUser) {
+      toastError('Sesi pengguna tidak aktif. Silakan pilih profil login terlebih dahulu.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
